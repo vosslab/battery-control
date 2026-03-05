@@ -1,0 +1,92 @@
+# Battery Control System - Configuration File
+# Copy this file to config.yml and fill in your values.
+
+# Battery capacity in kWh
+battery_capacity_kwh: 20.0
+
+# Hard reserve: never discharge below this SoC (percentage)
+# Summer: less conservative (more solar available to refill)
+# Winter: more conservative (limited solar)
+hard_reserve_pct:
+  summer: 10
+  winter: 20
+
+# Target SoC to reach from solar before peak window
+afternoon_target_soc_pct:
+  summer: 90
+  winter: 70
+
+# Peak arbitrage window (24-hour format)
+# Battery will discharge during high prices in this window
+peak_window_start: 16  # 4:00 PM
+peak_window_end: 22    # 10:00 PM
+
+# Price band SoC floors during peak window
+# Lower floor = more aggressive discharge at that price level
+price_band_floors:
+  summer:
+    low:      { max_price_cents: 8,    soc_floor_pct: 50 }
+    mid_low:  { max_price_cents: 10,   soc_floor_pct: 30 }
+    mid_high: { max_price_cents: 20,   soc_floor_pct: 20 }
+    high:     { max_price_cents: 9999, soc_floor_pct: 10 }
+  winter:
+    low:      { max_price_cents: 8,    soc_floor_pct: 60 }
+    mid_low:  { max_price_cents: 10,   soc_floor_pct: 45 }
+    mid_high: { max_price_cents: 20,   soc_floor_pct: 30 }
+    high:     { max_price_cents: 9999, soc_floor_pct: 20 }
+
+# Price threshold for extreme-price overrides (cents)
+# Above this, battery discharges even during daytime
+extreme_price_threshold: 20
+
+# Conservative night floor (outside peak window)
+night_floor_pct:
+  summer: 25
+  winter: 35
+
+# Headroom band for near-full battery during solar surplus
+# If SoC >= headroom_band_high, allow limited discharge to create room
+headroom_band_low: 85
+headroom_band_high: 95
+
+# Hysteresis: consecutive price checks before switching bands
+hysteresis_count: 2
+
+# Token friction: stable decision cycles before sending EP Cube command
+token_friction_count: 2
+
+# Solar fade detection
+solar_sunset_threshold_watts: 50
+solar_sunset_duration_minutes: 20
+
+# Season: 'auto' (May-Sep=summer), 'summer', or 'winter'
+season: auto
+
+# --- EP Cube Configuration ---
+# Token from epcube-token app (CAPTCHA-based login)
+# Paste the full authorization string here
+epcube_token: ""
+
+# EP Cube cloud region: US, EU, or JP
+epcube_region: "US"
+
+# EP Cube device serial number (printed on device or found in app)
+epcube_device_sn: ""
+
+# --- WeMo Configuration ---
+# Names of WeMo smart plugs controlling the second battery
+# Leave empty if not using WeMo plugs
+wemo_charge_plug_name: ""
+wemo_discharge_plug_name: ""
+
+# --- State Persistence ---
+# Path to JSON file for tracking hysteresis and last action
+state_file_path: "/tmp/battery_control_state.json"
+
+# --- Safety ---
+# Start in dry-run mode (log only, no commands sent)
+# Override with --execute on command line
+dry_run: true
+
+# Token age warning: log a warning if token is older than this (hours)
+token_warning_age_hours: 168  # 7 days
