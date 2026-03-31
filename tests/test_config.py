@@ -164,3 +164,59 @@ class TestPriceBands:
 		config = config_mod.DEFAULTS
 		assert config_mod.get_seasonal_value(config, "hard_reserve_pct", "summer") == 10
 		assert config_mod.get_seasonal_value(config, "hard_reserve_pct", "winter") == 20
+
+
+#============================================
+class TestTokenFile:
+	"""Tests for token-from-file loading in load_config."""
+
+	#============================================
+	def test_load_token_from_file(self, tmp_path):
+		"""Token file contents become config epcube_token."""
+		# write a token file
+		token_file = tmp_path / "token"
+		token_file.write_text("Bearer my_test_token")
+		# write config pointing to token file
+		config_path = tmp_path / "config.yml"
+		config_data = {"epcube_token_file": str(token_file)}
+		with open(config_path, "w") as f:
+			yaml.dump(config_data, f)
+		config = config_mod.load_config(str(config_path))
+		assert config["epcube_token"] == "Bearer my_test_token"
+
+	#============================================
+	def test_token_file_overrides_inline(self, tmp_path):
+		"""Token file takes precedence over inline epcube_token."""
+		token_file = tmp_path / "token"
+		token_file.write_text("Bearer from_file")
+		config_path = tmp_path / "config.yml"
+		config_data = {
+			"epcube_token": "Bearer inline_value",
+			"epcube_token_file": str(token_file),
+		}
+		with open(config_path, "w") as f:
+			yaml.dump(config_data, f)
+		config = config_mod.load_config(str(config_path))
+		assert config["epcube_token"] == "Bearer from_file"
+
+	#============================================
+	def test_token_file_missing(self, tmp_path):
+		"""Missing token file does not crash; token stays empty."""
+		config_path = tmp_path / "config.yml"
+		config_data = {"epcube_token_file": "/nonexistent/path/token"}
+		with open(config_path, "w") as f:
+			yaml.dump(config_data, f)
+		config = config_mod.load_config(str(config_path))
+		assert config["epcube_token"] == ""
+
+	#============================================
+	def test_token_file_strips_whitespace(self, tmp_path):
+		"""Trailing newlines in token file are stripped."""
+		token_file = tmp_path / "token"
+		token_file.write_text("Bearer xxx\n\n")
+		config_path = tmp_path / "config.yml"
+		config_data = {"epcube_token_file": str(token_file)}
+		with open(config_path, "w") as f:
+			yaml.dump(config_data, f)
+		config = config_mod.load_config(str(config_path))
+		assert config["epcube_token"] == "Bearer xxx"

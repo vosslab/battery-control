@@ -12,9 +12,12 @@ electricity prices and solar production.
 # install dependencies
 source source_me.sh && pip install -r pip_requirements.txt
 
+# set up EP Cube credentials for auto-renewal (interactive prompts)
+source source_me.sh && python3 epcube_setup.py
+
 # copy and edit the config file
 cp config_example.yml config.yml
-# edit config.yml with your EP Cube token, device SN, and WeMo plug names
+# edit config.yml (credentials and device SN are in the auth file)
 
 # dry-run (no commands sent)
 source source_me.sh && python3 -m battcontrol.battery_controller -c config.yml -n -v

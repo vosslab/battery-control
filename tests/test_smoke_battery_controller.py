@@ -31,7 +31,10 @@ def _make_config_file(tmp_path, overrides: dict = None) -> str:
 		str: Path to the temporary config file.
 	"""
 	config = dict(config_mod.DEFAULTS)
-	config["epcube_token"] = "test_token"
+	# write token to a file and reference it via epcube_token_file
+	token_file = tmp_path / ".epcube_token"
+	token_file.write_text("test_token")
+	config["epcube_token_file"] = str(token_file)
 	config["epcube_device_sn"] = "TEST_SN"
 	config["state_file_path"] = str(tmp_path / "state.json")
 	config["dry_run"] = True

@@ -5,14 +5,15 @@
 - Python 3.12
 - Runtime dependencies: `pip install -r pip_requirements.txt`
 - ComEd pricing: `battcontrol/comedlib.py` (requires `numpy`, `requests`, `scipy`)
-- EP Cube token: generate via the `epcube-token/` app (requires CAPTCHA)
+- EP Cube token: generate with `epcube_get_token.py` (see below)
 
 ## Configuration
 
 Copy `config_example.yml` to `config.yml` and fill in:
 
-- `epcube_token` - authorization token from epcube-token app
-- `epcube_device_sn` - device serial number (printed on EP Cube or found in app)
+- `epcube_auth_file` - path to credentials YAML for auto-renewal (default `~/.config/battcontrol/epcube_auth.yml`)
+- `epcube_token_file` - path to file containing the EP Cube token (default `~/.epcube_token`)
+- `epcube_device_sn` - device serial number (also loadable from auth file)
 - `wemo_charge_plug_name` - WeMo plug name for grid charging (optional)
 - `wemo_discharge_plug_name` - WeMo plug name for grid discharging (optional)
 
@@ -62,14 +63,37 @@ The controller writes hysteresis and tracking state to a JSON file (default
 
 ## Token management
 
-The EP Cube token expires periodically and requires CAPTCHA-based re-login via
-the `epcube-token/` app. When the token expires:
+### Automatic renewal (recommended)
 
-1. The controller logs a prominent warning
-2. EP Cube commands are skipped (WeMo-only mode)
-3. The controller continues operating with cached SoC data
+Set up credentials once with the interactive setup script:
 
-To refresh: regenerate the token and update `epcube_token` in `config.yml`.
+```bash
+source source_me.sh && python3 epcube_setup.py
+```
+
+This creates `~/.config/battcontrol/epcube_auth.yml` with your EP Cube region,
+device serial number, email, and password (chmod 600). The controller will
+auto-renew the token when it expires by solving the CAPTCHA automatically.
+
+### Manual token generation
+
+Generate a token manually without storing credentials:
+
+```bash
+source source_me.sh && python3 epcube_get_token.py -e your@email.com -r US
+```
+
+The script solves the jigsaw CAPTCHA using OpenCV, logs in, and writes the
+Bearer token to `~/.epcube_token`.
+
+### Fallback order
+
+The controller tries this order:
+
+1. Use valid token from `epcube_token_file`
+2. If missing or rejected (401), auto-generate from `epcube_auth_file` credentials
+3. Save new token back to `epcube_token_file`
+4. If auto-renewal fails, log a warning to run `epcube_get_token.py` manually
 
 ## Output
 

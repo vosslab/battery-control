@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-03-31
+
+### Additions and New Features
+
+- Created `epcube_get_token.py` standalone CLI script for EP Cube token generation
+  - Automates jigsaw CAPTCHA solving with OpenCV template matching
+  - Prompts for password interactively (keeps credentials out of shell history)
+  - Writes Bearer token to file (default `~/.epcube_token`)
+  - Retries up to 3 times since CAPTCHA template matching can fail
+  - Supports US, EU, and JP regions
+  - Exposes `generate_token()` function for programmatic use by the controller
+- Created `epcube_setup.py` interactive setup script for EP Cube credentials
+  - Creates `~/.config/battcontrol/epcube_auth.yml` with region, device SN,
+    username, and password (chmod 600)
+  - Prompts interactively; password uses getpass for hidden input
+- Added `epcube_token_file` config key to load EP Cube token from a separate file
+- Added `epcube_auth_file` config key to load EP Cube credentials from a
+  separate YAML file (`~/.config/battcontrol/epcube_auth.yml`)
+- Added `opencv-python`, `pillow`, and `pycryptodome` to `pip_requirements.txt`
+
+### Behavior or Interface Changes
+
+- Token is now loaded from a file path (`epcube_token_file`) rather than pasted
+  inline (`epcube_token`) in the config; the file path supports `~` expansion and
+  strips trailing whitespace
+- EP Cube credentials (region, device SN, username, password) are loaded from
+  `epcube_auth_file` and override corresponding values in `config.yml`
+- Controller auto-renews expired tokens when credentials are available in auth
+  file; fallback order: valid token file, auto-generate from auth, manual renewal
+- WeMo actuator execution is skipped when `wemo_charge_plug_name` and
+  `wemo_discharge_plug_name` are both empty (reduces log noise)
+- Token expiration warnings now reference `epcube_get_token.py` instead of the
+  external Streamlit app
+
+### Developer Tests and Notes
+
+- Added `tests/test_epcube_get_token.py` with parse_args, write_token, and
+  mocked login tests
+- Added `TestTokenFile` class to `tests/test_config.py` with 4 token-file
+  loading tests (load, override, missing, whitespace stripping)
+- Updated `tests/test_smoke_battery_controller.py` to use `epcube_token_file`
+  instead of inline `epcube_token`
+
 ## 2026-03-05
 
 ### Additions and New Features

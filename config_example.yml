@@ -63,14 +63,19 @@ solar_sunset_duration_minutes: 20
 season: auto
 
 # --- EP Cube Configuration ---
-# Token from epcube-token app (CAPTCHA-based login)
-# Paste the full authorization string here
-epcube_token: ""
+# Path to YAML file with EP Cube credentials for auto-renewal
+# Create with: source source_me.sh && python3 epcube_setup.py
+# Contains: epcube_region, epcube_device_sn, epcube_username, epcube_password
+epcube_auth_file: "~/.config/battcontrol/epcube_auth.yml"
 
-# EP Cube cloud region: US, EU, or JP
+# Path to file containing EP Cube authorization token
+# Auto-generated from auth file, or manual: python3 epcube_get_token.py -e your@email.com
+epcube_token_file: "~/.epcube_token"
+
+# EP Cube cloud region: US, EU, or JP (overridden by auth file if present)
 epcube_region: "US"
 
-# EP Cube device serial number (printed on device or found in app)
+# EP Cube device serial number (overridden by auth file if present)
 epcube_device_sn: ""
 
 # --- WeMo Configuration ---

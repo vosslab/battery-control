@@ -13,6 +13,7 @@ import battcontrol.state as state_mod
 import battcontrol.decision_engine as decision_engine
 import battcontrol.epcube_client as epcube_mod
 import battcontrol.wemo_actuator as wemo_mod
+import epcube_get_token
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +95,66 @@ def _fetch_comed_price() -> tuple:
 
 
 #============================================
+def _has_auth_credentials(config: dict) -> bool:
+	"""
+	Check if EP Cube auth credentials are available for auto-renewal.
+
+	Args:
+		config: Configuration dictionary.
+
+	Returns:
+		bool: True if username and password are present.
+	"""
+	has_creds = bool(config.get("epcube_username")) and bool(config.get("epcube_password"))
+	return has_creds
+
+
+#============================================
+def _auto_renew_token(config: dict, control_state: state_mod.ControlState) -> str | None:
+	"""
+	Attempt to auto-renew the EP Cube token using stored credentials.
+
+	Uses the CAPTCHA solver from epcube_get_token to generate a fresh token.
+	On success, writes the token to the token file and updates config.
+
+	Args:
+		config: Configuration dictionary with epcube_username and epcube_password.
+		control_state: Control state for token tracking.
+
+	Returns:
+		str: New token string, or None if renewal failed.
+	"""
+	username = config.get("epcube_username", "")
+	password = config.get("epcube_password", "")
+	region = config.get("epcube_region", "US")
+	logger.info("Attempting auto-renewal of EP Cube token for region %s", region)
+	# call the CAPTCHA solver and login
+	new_token = epcube_get_token.generate_token(username, password, region)
+	if new_token is None:
+		logger.warning(
+			"Auto-renewal failed. "
+			"Run epcube_get_token.py manually to regenerate."
+		)
+		return None
+	# save the new token to the token file
+	token_file = config.get("epcube_token_file", "")
+	if token_file:
+		token_path = epcube_get_token.write_token(new_token, token_file)
+		logger.info("New token saved to %s", token_path)
+	# update config in memory
+	config["epcube_token"] = new_token
+	# clear the expired state
+	control_state.mark_token_success()
+	return new_token
+
+
+#============================================
 def _fetch_epcube_data(config: dict, control_state: state_mod.ControlState) -> tuple:
 	"""
 	Fetch EP Cube device data.
+
+	Tries the current token first. If the token is missing or expired,
+	attempts auto-renewal using stored credentials from the auth file.
 
 	Args:
 		config: Configuration dictionary.
@@ -107,19 +165,42 @@ def _fetch_epcube_data(config: dict, control_state: state_mod.ControlState) -> t
 	"""
 	token = config.get("epcube_token", "")
 	device_sn = config.get("epcube_device_sn", "")
+	has_creds = _has_auth_credentials(config)
+	# track whether we already attempted renewal this run (prevent loops)
+	already_renewed = False
+	# if no token, try auto-renewal before giving up
 	if not token:
-		logger.info("No EP Cube token configured, running without EP Cube")
-		return None, None
-	# skip if token is known to be expired
+		if has_creds:
+			logger.info("No token file found, attempting auto-generation")
+			token = _auto_renew_token(config, control_state)
+			already_renewed = True
+		if not token:
+			if has_creds:
+				logger.warning("No token and auto-generation failed. "
+					"Run epcube_get_token.py manually.")
+			else:
+				logger.info("No EP Cube token or auth file configured")
+			return None, None
+	# if token is known to be expired, try auto-renewal
 	if control_state.token_expired:
 		expired_at = control_state.token_expired_at or "unknown"
-		logger.warning(
-			"EP Cube token expired at %s. "
-			"Regenerate at epcube-token app and update config. "
-			"Running in WeMo-only mode.",
-			expired_at,
-		)
-		return None, None
+		if has_creds and not already_renewed:
+			logger.info("Token expired at %s, attempting auto-renewal", expired_at)
+			renewed = _auto_renew_token(config, control_state)
+			already_renewed = True
+			if renewed:
+				token = renewed
+			else:
+				logger.warning("Token expired and auto-renewal failed. "
+					"Run epcube_get_token.py manually.")
+				return None, None
+		elif not has_creds:
+			logger.warning(
+				"Token expired at %s. No auth file configured. "
+				"Run epcube_get_token.py to regenerate.",
+				expired_at,
+			)
+			return None, None
 	region = config.get("epcube_region", "US")
 	client = epcube_mod.EpcubeClient(token, region, device_sn)
 	try:
@@ -128,14 +209,35 @@ def _fetch_epcube_data(config: dict, control_state: state_mod.ControlState) -> t
 		logger.error("EP Cube API error: %s", err)
 		return None, None
 	if device_data is None:
-		# likely token expired (401)
-		control_state.mark_token_expired()
-		logger.warning(
-			"EP Cube token expired. "
-			"Regenerate at epcube-token app and update config. "
-			"Running in WeMo-only mode."
-		)
-		return None, None
+		# likely token rejected (401), try one renewal if we have not already
+		if has_creds and not already_renewed:
+			logger.info("Token rejected by API, attempting auto-renewal")
+			renewed = _auto_renew_token(config, control_state)
+			if renewed:
+				# retry once with the new token
+				client = epcube_mod.EpcubeClient(renewed, region, device_sn)
+				try:
+					device_data = client.get_device_data()
+				except RuntimeError as err:
+					logger.error("EP Cube API error after renewal: %s", err)
+					return None, None
+				if device_data is None:
+					logger.error("EP Cube still rejecting after token renewal")
+					control_state.mark_token_expired()
+					return None, None
+			else:
+				control_state.mark_token_expired()
+				logger.warning("Token rejected and auto-renewal failed. "
+					"Run epcube_get_token.py manually.")
+				return None, None
+		else:
+			control_state.mark_token_expired()
+			if already_renewed:
+				logger.warning("Freshly generated token was rejected by EP Cube")
+			else:
+				logger.warning("Token rejected by EP Cube. No auth file configured. "
+					"Run epcube_get_token.py to regenerate.")
+			return None, None
 	# token is working
 	control_state.mark_token_success()
 	# check token age warning
@@ -240,8 +342,11 @@ def main() -> None:
 		# EP Cube actuator
 		if epcube_client is not None:
 			epcube_mod.execute_epcube(result, epcube_client, config, dry_run)
-		# WeMo actuator
-		wemo_mod.execute_wemo(result.action, config, dry_run)
+		# WeMo actuator (skip when no plugs configured)
+		charge_plug = config.get("wemo_charge_plug_name", "")
+		discharge_plug = config.get("wemo_discharge_plug_name", "")
+		if charge_plug or discharge_plug:
+			wemo_mod.execute_wemo(result.action, config, dry_run)
 	else:
 		logger.info(
 			"Token friction: action %s stable for %d/%d cycles, waiting",

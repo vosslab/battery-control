@@ -52,6 +52,8 @@ DEFAULTS = {
 	"season": "auto",
 	# EP Cube connection settings
 	"epcube_token": "",
+	"epcube_token_file": "",
+	"epcube_auth_file": "",
 	"epcube_region": "US",
 	"epcube_device_sn": "",
 	# WeMo smart plug device names
@@ -134,10 +136,31 @@ def load_config(config_path: str) -> dict:
 		user_config = {}
 	# merge user config over defaults
 	config = _deep_merge(DEFAULTS, user_config)
-	# validate required fields
-	if not config.get("epcube_token") and not config.get("epcube_device_sn"):
-		# both can be empty if running WeMo-only mode
-		pass
+	# load EP Cube credentials from auth file if configured
+	auth_file = config.get("epcube_auth_file", "")
+	if auth_file:
+		auth_path = os.path.expanduser(auth_file)
+		if os.path.isfile(auth_path):
+			with open(auth_path, "r") as af:
+				auth_data = yaml.safe_load(af)
+			if auth_data and isinstance(auth_data, dict):
+				# copy auth fields into config (only if present in auth file)
+				auth_keys = [
+					"epcube_region", "epcube_device_sn",
+					"epcube_username", "epcube_password",
+				]
+				for key in auth_keys:
+					if key in auth_data:
+						config[key] = auth_data[key]
+	# load EP Cube token from external file if configured
+	token_file = config.get("epcube_token_file", "")
+	if token_file:
+		token_path = os.path.expanduser(token_file)
+		if os.path.isfile(token_path):
+			with open(token_path, "r") as tf:
+				file_token = tf.read().strip()
+			if file_token:
+				config["epcube_token"] = file_token
 	return config
 
 
