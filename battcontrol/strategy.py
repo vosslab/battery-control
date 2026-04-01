@@ -214,14 +214,14 @@ def _daylight_logic(
 				soc_floor=band_low,
 				target_mode="self_consumption",
 			)
-		# not exporting or price is cheap, hold at 100%
+		# battery full, surplus exports to grid
 		logger.info(
-			"Full: SoC %d%%, price %.1fc <= cutoff %.1fc, holding",
+			"Battery full: SoC %d%%, price %.1fc <= cutoff %.1fc, exporting surplus",
 			battery_soc, comed_price_cents, comed_cutoff_cents,
 		)
 		return DecisionResult(
 			action=Action.CHARGE_FROM_SOLAR,
-			reason=f"Solar surplus, SoC {battery_soc}% full, holding",
+			reason=f"Battery full, exporting surplus (price {comed_price_cents:.1f}c)",
 			soc_floor=100,
 			target_mode="self_consumption",
 		)

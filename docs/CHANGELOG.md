@@ -91,6 +91,9 @@
 
 ### Fixes and Maintenance
 
+- Renamed misleading "holding" reason string at SoC=100% with solar surplus to
+  "Battery full, exporting surplus"; the behavior was correct (self-consumption
+  mode, surplus exports to grid) but "holding" implied idle rather than export
 - Rewrote `tests/test_decision_engine.py` to test only orchestrator mechanics
   (returns DecisionResult, valid enum action, updates last_action in state);
   removed all strategy decision assertions that blocked strategy changes
