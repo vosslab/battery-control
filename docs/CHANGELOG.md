@@ -5,12 +5,24 @@
 ### Additions and New Features
 
 - Created `epcube_get_token.py` standalone CLI script for EP Cube token generation
-  - Automates jigsaw CAPTCHA solving with OpenCV template matching
-  - Prompts for password interactively (keeps credentials out of shell history)
-  - Writes Bearer token to file (default `~/.epcube_token`)
-  - Retries up to 3 times since CAPTCHA template matching can fail
-  - Supports US, EU, and JP regions
-  - Exposes `generate_token()` function for programmatic use by the controller
+  - Solves jigsaw CAPTCHA using alpha-contour matching: extracts the jigsaw
+    silhouette from the piece PNG alpha channel and matches it against Canny
+    edges in the background image; grayscale template matching was tested and
+    rejected because it matches scene texture instead of the cutout shape
+  - Reads credentials from `~/.config/battcontrol/epcube_auth.yml` by default;
+    prompts interactively for missing email or password
+  - Writes Bearer token to `~/.epcube_token`
+  - Retries auto-solve up to 2 times, then falls back to manual CAPTCHA
+    (opens image with grid overlay, user enters X pixel position)
+  - Manual fallback is cross-platform (macOS `open`, Linux `xdg-open`,
+    headless detection via `DISPLAY` env var)
+  - Exposes `generate_token()` for programmatic use by the controller
+  - `--test` mode replays cached images from `output/epcube_captcha_debug/`,
+    compares canny_edges and alpha_contour methods, shows top-3 peaks with
+    confidence gaps, ground truth error when manual accepted_x is available,
+    and writes results to CSV
+  - All CAPTCHA images are saved to `output/epcube_captcha_debug/` with
+    timestamped filenames and metadata JSON for offline analysis
 - Created `epcube_setup.py` interactive setup script for EP Cube credentials
   - Creates `~/.config/battcontrol/epcube_auth.yml` with region, device SN,
     username, and password (chmod 600)
@@ -19,6 +31,7 @@
 - Added `epcube_auth_file` config key to load EP Cube credentials from a
   separate YAML file (`~/.config/battcontrol/epcube_auth.yml`)
 - Added `opencv-python`, `pillow`, and `pycryptodome` to `pip_requirements.txt`
+- Added `config.yml`, `epcube_auth.yml`, and `output/` to `.gitignore`
 
 ### Behavior or Interface Changes
 
@@ -28,11 +41,26 @@
 - EP Cube credentials (region, device SN, username, password) are loaded from
   `epcube_auth_file` and override corresponding values in `config.yml`
 - Controller auto-renews expired tokens when credentials are available in auth
-  file; fallback order: valid token file, auto-generate from auth, manual renewal
+  file; fallback order: valid token file, auto-generate from auth, manual renewal;
+  renewal is attempted at most once per controller run to prevent loops
+- Warning messages distinguish: missing token, expired token, missing auth file,
+  failed auto-renewal, and freshly generated token rejected
 - WeMo actuator execution is skipped when `wemo_charge_plug_name` and
   `wemo_discharge_plug_name` are both empty (reduces log noise)
-- Token expiration warnings now reference `epcube_get_token.py` instead of the
-  external Streamlit app
+
+### Decisions and Failures
+
+- Grayscale template matching was removed after offline testing showed it
+  matches scene texture (battery edges, wall gradients) instead of the jigsaw
+  cutout shape; it produced high-confidence wrong answers (score 0.42 at x=320
+  when the correct answer was x=104)
+- The reference app.py algorithm (full-rectangle grayscale TM_CCOEFF_NORMED)
+  fails on EP Cube CAPTCHAs because the piece PNG is padded to full image
+  height with transparency, making the template 352x94 mostly-empty
+- Alpha-contour matching (silhouette edges vs background edges) was validated
+  as correct on cached image pairs using the `--test` offline mode
+- Canny edge matching on raw piece content also finds the correct X but is
+  less grounded than alpha contour because it depends on background noise
 
 ### Developer Tests and Notes
 
@@ -42,6 +70,8 @@
   loading tests (load, override, missing, whitespace stripping)
 - Updated `tests/test_smoke_battery_controller.py` to use `epcube_token_file`
   instead of inline `epcube_token`
+- CAPTCHA debug images accumulate in `output/epcube_captcha_debug/` with
+  per-attempt metadata; `--test` mode reads these for offline method comparison
 
 ## 2026-03-05
 

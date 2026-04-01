@@ -19,25 +19,18 @@ class TestParseArgs:
 	"""Tests for parse_args defaults."""
 
 	#============================================
-	def test_default_region(self):
-		"""Default region is US."""
-		with unittest.mock.patch("sys.argv", ["prog", "-e", "test@example.com"]):
+	def test_no_args_required(self):
+		"""Script runs with no arguments."""
+		with unittest.mock.patch("sys.argv", ["prog"]):
 			args = epcube_get_token.parse_args()
-		assert args.region == "US"
+		assert args.verbose == 0
 
 	#============================================
-	def test_default_output(self):
-		"""Default output file is ~/.epcube_token."""
-		with unittest.mock.patch("sys.argv", ["prog", "-e", "test@example.com"]):
+	def test_verbose_flag(self):
+		"""Verbose flag increments count."""
+		with unittest.mock.patch("sys.argv", ["prog", "-vv"]):
 			args = epcube_get_token.parse_args()
-		assert args.output_file == "~/.epcube_token"
-
-	#============================================
-	def test_custom_region(self):
-		"""Region flag is accepted."""
-		with unittest.mock.patch("sys.argv", ["prog", "-e", "test@example.com", "-r", "EU"]):
-			args = epcube_get_token.parse_args()
-		assert args.region == "EU"
+		assert args.verbose == 2
 
 
 #============================================

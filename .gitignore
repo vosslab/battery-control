@@ -7,3 +7,4 @@ report_*.txt
 .DS_Store
 config.yml
 epcube_auth.yml
+output/
