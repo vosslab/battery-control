@@ -10,6 +10,7 @@ import datetime
 # default state values
 _DEFAULT_STATE = {
 	"last_action": "",
+	"last_strategy_state": "",
 	"last_commanded_floor": None,
 	"token_expired": False,
 	"token_expired_at": None,

@@ -10,9 +10,8 @@ import battcontrol.strategy
 logger = logging.getLogger(__name__)
 
 # re-export for backward compatibility with callers
-Action = battcontrol.strategy.Action
+StrategyState = battcontrol.strategy.StrategyState
 DecisionResult = battcontrol.strategy.DecisionResult
-TARGET_MODE_DISPLAY = battcontrol.strategy.TARGET_MODE_DISPLAY
 
 
 #============================================
@@ -50,6 +49,15 @@ def decide(
 	"""
 	if current_time is None:
 		current_time = datetime.datetime.now()
+	# recover previous strategy state for deadband
+	previous_state = None
+	last_state_str = getattr(control_state, "last_strategy_state", "")
+	if last_state_str:
+		# convert stored string back to enum
+		for member in battcontrol.strategy.StrategyState:
+			if member.value == last_state_str:
+				previous_state = member
+				break
 	# delegate to pure strategy function
 	result = battcontrol.strategy.evaluate(
 		battery_soc=battery_soc,
@@ -60,8 +68,10 @@ def decide(
 		comed_cutoff_cents=comed_cutoff_cents,
 		current_time=current_time,
 		config=config,
+		previous_state=previous_state,
 	)
-	# track last action in state for logging
-	control_state.last_action = result.action.value
+	# track state for deadband and logging
+	control_state.last_action = result.state.value
+	control_state.last_strategy_state = result.state.value
 	logger.info("Decision: %s", result)
 	return result

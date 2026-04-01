@@ -1,7 +1,9 @@
 """Pure policy functions for battery control strategy.
 
-This module implements the STRATEGY.md flowchart without state management or I/O.
-It takes a snapshot of current conditions and returns a policy decision.
+This module implements a price-first policy: the primary decision axis is
+whether the current price is above or below the comedlib cutoff. Solar and
+load determine physical outcomes under that policy but do not change the
+policy itself.
 """
 
 # Standard Library
@@ -16,24 +18,14 @@ logger = logging.getLogger(__name__)
 
 
 #============================================
-class Action(enum.Enum):
-	"""Controller policy actions.
+class StrategyState(enum.Enum):
+	"""Economic regime for the control interval.
 
-	These represent controller intent, not hardware commands.
-	Each action maps to an EP Cube mode and a SoC reserve rule:
-	  CHARGE_FROM_SOLAR -> Self-consumption with high reserve (target SoC)
-	  DISCHARGE_ENABLED -> Self-consumption with floor from price band
-	  DISCHARGE_DISABLED -> Backup with max(current SoC, configured hold floor)
+	The controller sets a stable battery policy based on price vs cutoff.
+	The inverter handles solar/load transitions within that policy.
 	"""
-	CHARGE_FROM_SOLAR = "charge_from_solar"
-	DISCHARGE_ENABLED = "discharge_enabled"
-	DISCHARGE_DISABLED = "discharge_disabled"
-
-# maps target_mode strings to human-readable EP Cube mode names for logging
-TARGET_MODE_DISPLAY = {
-	"self_consumption": "Self-consumption",
-	"backup": "Backup",
-}
+	BELOW_CUTOFF = "below_cutoff"
+	ABOVE_CUTOFF = "above_cutoff"
 
 
 #============================================
@@ -42,44 +34,39 @@ class DecisionResult:
 	Result from the decision engine.
 
 	Attributes:
-		action: Controller policy action.
+		state: Economic regime (below or above cutoff).
 		reason: Human-readable explanation.
 		soc_floor: Reserve SoC percentage for this decision.
-		price_segment: Segment index from interpolation anchors (-1 = sentinel).
-		target_mode: EP Cube mode ('self_consumption' or 'backup').
+		target_mode: EP Cube mode (always 'self_consumption' for now).
 	"""
 
 	#============================================
 	def __init__(
 		self,
-		action: Action,
+		state: StrategyState,
 		reason: str,
 		soc_floor: int = 0,
-		price_segment: int = -1,
-		target_mode: str = "",
+		target_mode: str = "self_consumption",
 	):
 		"""
 		Initialize a decision result.
 
 		Args:
-			action: Controller policy action.
+			state: Economic regime.
 			reason: Human-readable explanation.
 			soc_floor: Reserve SoC percentage.
-			price_segment: Segment index from get_price_segment_index().
 			target_mode: EP Cube mode name.
 		"""
-		self.action = action
+		self.state = state
 		self.reason = reason
 		self.soc_floor = soc_floor
-		self.price_segment = price_segment
 		self.target_mode = target_mode
 
 	#============================================
 	def __repr__(self) -> str:
-		mode_name = TARGET_MODE_DISPLAY.get(self.target_mode, self.target_mode)
 		return (
-			f"DecisionResult({self.action.value} | "
-			f"Mode: {mode_name} | reserve {self.soc_floor}% | "
+			f"DecisionResult({self.state.value} | "
+			f"reserve {self.soc_floor}% | "
 			f"{self.reason})"
 		)
 
@@ -88,6 +75,9 @@ class DecisionResult:
 def _is_solar_available(solar_power_watts: float, threshold: float = 50.0) -> bool:
 	"""
 	Check if meaningful solar power is available.
+
+	Used to determine whether to apply the night floor clamp on the
+	above-cutoff price floor. Not used for policy routing.
 
 	Args:
 		solar_power_watts: Current solar generation in watts.
@@ -100,226 +90,44 @@ def _is_solar_available(solar_power_watts: float, threshold: float = 50.0) -> bo
 
 
 #============================================
-def _compute_solar_surplus(solar_power_watts: float, load_power_watts: float) -> float:
-	"""
-	Estimate solar surplus (solar minus house load).
-
-	Args:
-		solar_power_watts: Current solar generation.
-		load_power_watts: Current house load (from smartHomePower or backUpPower).
-
-	Returns:
-		float: Surplus in watts (positive means excess solar).
-	"""
-	return solar_power_watts - load_power_watts
-
-
-
-#============================================
-def _daylight_logic(
-	battery_soc: int,
-	solar_power_watts: float,
-	load_power_watts: float,
+def _determine_state(
 	comed_price_cents: float,
 	comed_cutoff_cents: float,
-	season: str,
-	config: dict,
-) -> DecisionResult:
+	cutoff_buffer: float,
+	previous_state: StrategyState,
+) -> StrategyState:
 	"""
-	Implement section B of STRATEGY.md: daylight logic.
+	Determine economic state with deadband around the cutoff.
+
+	Prevents chattering when price oscillates near the cutoff boundary.
+	The command buffer protects the output; this protects the decision
+	boundary itself.
 
 	Args:
-		battery_soc: Current SoC percentage.
-		solar_power_watts: Current solar power in watts.
-		load_power_watts: Current house load in watts.
 		comed_price_cents: Current ComEd price in cents.
-		comed_cutoff_cents: Reasonable cutoff price from comedlib.
-		season: 'summer', 'shoulder', or 'winter'.
-		config: Configuration dictionary.
+		comed_cutoff_cents: Cutoff price from comedlib.
+		cutoff_buffer: Half-width of the deadband in cents.
+		previous_state: Last strategy state (None on startup).
 
 	Returns:
-		DecisionResult: The daylight decision.
+		StrategyState: The economic regime for this interval.
 	"""
-	surplus = _compute_solar_surplus(solar_power_watts, load_power_watts)
-	logger.info(
-		"Daylight: surplus %.0fW (solar %.0fW - load %.0fW)",
-		surplus, solar_power_watts, load_power_watts,
-	)
-	if surplus > 0:
-		# section B.2: solar is excess
-		# B.2x: if price is above the comedlib cutoff, export surplus to grid
-		# rather than charging battery. Use price-to-SoC anchors for the
-		# discharge floor so the battery is ready if load spikes past solar.
-		if comed_price_cents > comed_cutoff_cents:
-			price_floor = battcontrol.config.get_price_floor(
-				config, season, comed_price_cents
-			)
-			segment_idx = battcontrol.config.get_price_segment_index(
-				config, season, comed_price_cents
-			)
-			logger.info(
-				"Price %.1fc above cutoff %.1fc during surplus, "
-				"exporting to grid, floor %d%%",
-				comed_price_cents, comed_cutoff_cents, price_floor,
-			)
-			return DecisionResult(
-				action=Action.DISCHARGE_ENABLED,
-				reason=(f"Price {comed_price_cents:.1f}c > cutoff "
-					f"{comed_cutoff_cents:.1f}c, exporting surplus, "
-					f"floor {price_floor}%"),
-				soc_floor=price_floor,
-				price_segment=segment_idx,
-				target_mode="self_consumption",
-			)
-		if battery_soc < 100:
-			# B.2a: not full, let solar charge to 100%
-			logger.info(
-				"Charging from solar: SoC %d%% below 100%%",
-				battery_soc,
-			)
-			return DecisionResult(
-				action=Action.CHARGE_FROM_SOLAR,
-				reason=f"Solar surplus, SoC {battery_soc}% < 100%, charging",
-				soc_floor=100,
-				target_mode="self_consumption",
-			)
-		# B.2b: at or above target, check headroom
-		band_high = config.get("headroom_band_high", 95)
-		band_low = config.get("headroom_band_low", 85)
-		if battery_soc >= band_high and comed_price_cents > comed_cutoff_cents:
-			# allow limited discharge to create headroom for more solar
-			headroom_floor = battcontrol.config.get_price_floor(
-				config, season, comed_price_cents
-			)
-			logger.info(
-				"Creating headroom: SoC %d%% >= %d%%, price %.1fc > cutoff %.1fc, floor %d%%",
-				battery_soc, band_high, comed_price_cents, comed_cutoff_cents, headroom_floor,
-			)
-			return DecisionResult(
-				action=Action.DISCHARGE_ENABLED,
-				reason=(f"Creating headroom: SoC {battery_soc}% >= {band_high}%, "
-					f"price {comed_price_cents:.1f}c > cutoff {comed_cutoff_cents:.1f}c"),
-				soc_floor=headroom_floor,
-				target_mode="self_consumption",
-			)
-		if battery_soc >= band_high and comed_price_cents < 0:
-			# negative price: absorb solar into battery instead of exporting at a loss
-			logger.info(
-				"Negative price headroom: SoC %d%% >= %d%%, price %.1fc negative",
-				battery_soc, band_high, comed_price_cents,
-			)
-			return DecisionResult(
-				action=Action.DISCHARGE_ENABLED,
-				reason=f"Negative price headroom: SoC {battery_soc}% >= {band_high}%, price {comed_price_cents:.1f}c",
-				soc_floor=band_low,
-				target_mode="self_consumption",
-			)
-		# battery full, surplus exports to grid
+	if comed_price_cents <= comed_cutoff_cents - cutoff_buffer:
+		return StrategyState.BELOW_CUTOFF
+	if comed_price_cents >= comed_cutoff_cents + cutoff_buffer:
+		return StrategyState.ABOVE_CUTOFF
+	# in the deadband: keep previous state, or fall through to raw comparison
+	if previous_state is not None:
 		logger.info(
-			"Battery full: SoC %d%%, price %.1fc <= cutoff %.1fc, exporting surplus",
-			battery_soc, comed_price_cents, comed_cutoff_cents,
+			"Deadband: price %.1fc within %.1fc of cutoff %.1fc, keeping %s",
+			comed_price_cents, cutoff_buffer, comed_cutoff_cents,
+			previous_state.value,
 		)
-		return DecisionResult(
-			action=Action.CHARGE_FROM_SOLAR,
-			reason=f"Battery full, exporting surplus (price {comed_price_cents:.1f}c)",
-			soc_floor=100,
-			target_mode="self_consumption",
-		)
-	# section B.3: no solar surplus
-	if comed_price_cents > comed_cutoff_cents:
-		# B.3a: price above cutoff, discharge with interpolated floor
-		price_floor = battcontrol.config.get_price_floor(
-			config, season, comed_price_cents
-		)
-		segment_idx = battcontrol.config.get_price_segment_index(
-			config, season, comed_price_cents
-		)
-		logger.info(
-			"No surplus, price %.1fc > cutoff %.1fc, discharging to floor %d%%",
-			comed_price_cents, comed_cutoff_cents, price_floor,
-		)
-		return DecisionResult(
-			action=Action.DISCHARGE_ENABLED,
-			reason=(f"No surplus, price {comed_price_cents:.1f}c > "
-				f"cutoff {comed_cutoff_cents:.1f}c"),
-			soc_floor=price_floor,
-			price_segment=segment_idx,
-			target_mode="self_consumption",
-		)
-	# B.3b: self-consumption at current SoC -- no grid charging, captures solar when surplus appears
-	logger.info(
-		"Self-consumption hold: no surplus, price %.1fc <= cutoff %.1fc, reserve %d%%",
-		comed_price_cents, comed_cutoff_cents, battery_soc,
-	)
-	return DecisionResult(
-		action=Action.DISCHARGE_DISABLED,
-		reason=(f"No surplus, price {comed_price_cents:.1f}c <= "
-			f"cutoff {comed_cutoff_cents:.1f}c, hold at {battery_soc}%"),
-		soc_floor=battery_soc,
-		target_mode="self_consumption",
-	)
-
-
-#============================================
-def _night_logic(
-	battery_soc: int,
-	comed_price_cents: float,
-	comed_cutoff_cents: float,
-	season: str,
-	current_time: datetime.datetime,
-	config: dict,
-) -> DecisionResult:
-	"""
-	Implement section D of STRATEGY.md: night logic.
-
-	Args:
-		battery_soc: Current SoC percentage.
-		comed_price_cents: Current ComEd price in cents.
-		comed_cutoff_cents: Reasonable cutoff price from comedlib.
-		season: 'summer', 'shoulder', or 'winter'.
-		current_time: Current datetime.
-		config: Configuration dictionary.
-
-	Returns:
-		DecisionResult: The night decision.
-	"""
-	night_floor = battcontrol.config.get_seasonal_value(
-		config, "night_floor_pct", season
-	)
-	# D.2: discharge only if price above cutoff and above night floor
-	if comed_price_cents > comed_cutoff_cents and battery_soc > night_floor:
-		# use price anchors but never go below night floor
-		price_floor = max(
-			battcontrol.config.get_price_floor(config, season, comed_price_cents),
-			night_floor,
-		)
-		segment_idx = battcontrol.config.get_price_segment_index(
-			config, season, comed_price_cents
-		)
-		logger.info(
-			"Night discharge: price %.1fc > cutoff %.1fc, SoC %d%% > floor %d%%",
-			comed_price_cents, comed_cutoff_cents, battery_soc, price_floor,
-		)
-		return DecisionResult(
-			action=Action.DISCHARGE_ENABLED,
-			reason=(f"Night price {comed_price_cents:.1f}c > "
-				f"cutoff {comed_cutoff_cents:.1f}c, floor {price_floor}%"),
-			soc_floor=price_floor,
-			price_segment=segment_idx,
-			target_mode="self_consumption",
-		)
-	# otherwise hold
-	logger.info(
-		"Night hold: price %.1fc vs cutoff %.1fc, SoC %d%% vs floor %d%%",
-		comed_price_cents, comed_cutoff_cents, battery_soc, night_floor,
-	)
-	return DecisionResult(
-		action=Action.DISCHARGE_DISABLED,
-		reason=f"Night hold: price {comed_price_cents:.1f}c, SoC {battery_soc}%",
-		soc_floor=night_floor,
-		target_mode="backup",
-	)
-
+		return previous_state
+	# no previous state (startup): raw comparison
+	if comed_price_cents <= comed_cutoff_cents:
+		return StrategyState.BELOW_CUTOFF
+	return StrategyState.ABOVE_CUTOFF
 
 
 #============================================
@@ -332,33 +140,31 @@ def evaluate(
 	comed_cutoff_cents: float,
 	current_time: datetime.datetime,
 	config: dict,
+	previous_state: StrategyState = None,
 ) -> DecisionResult:
 	"""
-	Pure policy evaluation function. No state mutation, no I/O, no side effects.
+	Pure policy evaluation function. No state mutation, no I/O.
 
-	This is the core routing function implementing the STRATEGY.md flowchart.
-	It takes a snapshot and returns the policy decision without caring about
-	historical state or cadence.
+	Primary decision axis: price vs cutoff (economic regime).
+	Solar and load determine physical outcomes but do not change the policy.
 
 	Args:
 		battery_soc: Current battery state of charge percentage.
 		solar_power_watts: Current solar generation in watts.
-		load_power_watts: Current house load in watts (from smartHomePower).
+		load_power_watts: Current house load in watts.
 		comed_price_cents: Current ComEd price in cents.
-		comed_median_cents: 24-hour median ComEd price in cents (unused but kept
-			for replay compatibility).
-		comed_cutoff_cents: Reasonable cutoff price from comedlib. Prices above
-			this indicate conserve mode (export surplus); below means consume
-			(charge battery).
+		comed_median_cents: 24-hour median ComEd price (unused, kept for
+			replay compatibility).
+		comed_cutoff_cents: Reasonable cutoff price from comedlib.
 		current_time: Current datetime.
 		config: Configuration dictionary.
+		previous_state: Last strategy state for deadband (None on startup).
 
 	Returns:
 		DecisionResult: The battery control decision.
 	"""
 	# determine season
 	season = battcontrol.config.get_season(config, current_time)
-	# section A: guards
 	hard_reserve = battcontrol.config.get_seasonal_value(
 		config, "hard_reserve_pct", season
 	)
@@ -369,41 +175,78 @@ def evaluate(
 		battery_soc, comed_price_cents, comed_cutoff_cents, solar_power_watts,
 		load_power_watts, current_time.hour, season,
 	)
-	# A.1: hard reserve check
+	# guard: hard reserve check
 	if battery_soc <= hard_reserve:
 		reason = f"Hard reserve: SoC {battery_soc}% <= {hard_reserve}%"
 		logger.info("Guard: %s", reason)
 		result = DecisionResult(
-			action=Action.DISCHARGE_DISABLED,
+			state=StrategyState.BELOW_CUTOFF,
 			reason=reason,
 			soc_floor=hard_reserve,
-			target_mode="backup",
 		)
 		logger.info("Decision: %s", result)
 		return result
 	logger.info("Guard: SoC %d%% above hard reserve %d%%", battery_soc, hard_reserve)
-	# A.2/A.3: solar availability check
-	solar_threshold = config.get("solar_sunset_threshold_watts", 50)
-	solar_available = _is_solar_available(solar_power_watts, solar_threshold)
-	solar_tag = "yes" if solar_available else "no"
-	logger.info(
-		"Solar available: %s (%.0fW, threshold %dW)",
-		solar_tag, solar_power_watts, solar_threshold,
+	# determine economic state with deadband
+	cutoff_buffer = config.get("cutoff_buffer_cents", 0.5)
+	state = _determine_state(
+		comed_price_cents, comed_cutoff_cents, cutoff_buffer, previous_state,
 	)
-	if not solar_available:
-		# no solar: night logic (price vs cutoff gates discharge)
-		logger.info("Entering night logic")
-		result = _night_logic(
-			battery_soc, comed_price_cents, comed_cutoff_cents,
-			season, current_time, config
+	logger.info("State: %s (price %.1fc, cutoff %.1fc)", state.value, comed_price_cents, comed_cutoff_cents)
+	# below cutoff: cheap grid, do not spend battery
+	if state == StrategyState.BELOW_CUTOFF:
+		# headroom exception: near-full battery with negative price
+		# discharge a bit to absorb solar instead of exporting at a loss
+		band_high = config.get("headroom_band_high", 95)
+		band_low = config.get("headroom_band_low", 85)
+		if battery_soc >= band_high and comed_price_cents < 0:
+			logger.info(
+				"Negative price headroom: SoC %d%% >= %d%%, price %.1fc negative",
+				battery_soc, band_high, comed_price_cents,
+			)
+			result = DecisionResult(
+				state=StrategyState.BELOW_CUTOFF,
+				reason=(f"Negative price headroom: SoC {battery_soc}% >= "
+					f"{band_high}%, price {comed_price_cents:.1f}c"),
+				soc_floor=band_low,
+			)
+			logger.info("Decision: %s", result)
+			return result
+		# normal below-cutoff: reserve 100%, battery holds
+		reason = (f"Below cutoff: price {comed_price_cents:.1f}c <= "
+			f"cutoff {comed_cutoff_cents:.1f}c, reserve 100%")
+		logger.info(reason)
+		result = DecisionResult(
+			state=StrategyState.BELOW_CUTOFF,
+			reason=reason,
+			soc_floor=100,
 		)
 		logger.info("Decision: %s", result)
 		return result
-	# solar is available: daylight logic (price vs cutoff gates discharge)
-	logger.info("Entering daylight logic")
-	result = _daylight_logic(
-		battery_soc, solar_power_watts, load_power_watts,
-		comed_price_cents, comed_cutoff_cents, season, config
+	# above cutoff: expensive grid, allow battery use
+	price_floor = battcontrol.config.get_price_floor(
+		config, season, comed_price_cents
+	)
+	# night clamp: if no solar, enforce at least night_floor
+	solar_threshold = config.get("solar_sunset_threshold_watts", 50)
+	solar_available = _is_solar_available(solar_power_watts, solar_threshold)
+	if not solar_available:
+		night_floor = battcontrol.config.get_seasonal_value(
+			config, "night_floor_pct", season
+		)
+		if price_floor < night_floor:
+			logger.info(
+				"Night clamp: price floor %d%% raised to night floor %d%%",
+				price_floor, night_floor,
+			)
+			price_floor = max(price_floor, night_floor)
+	reason = (f"Above cutoff: price {comed_price_cents:.1f}c >= "
+		f"cutoff {comed_cutoff_cents:.1f}c, floor {price_floor}%")
+	logger.info(reason)
+	result = DecisionResult(
+		state=StrategyState.ABOVE_CUTOFF,
+		reason=reason,
+		soc_floor=price_floor,
 	)
 	logger.info("Decision: %s", result)
 	return result

@@ -110,7 +110,7 @@ class HourlyLogger:
 		self.latest_price = comed_price
 		self.latest_median = comed_median
 		self.latest_cutoff = comed_cutoff
-		self.latest_action = result.action.value if hasattr(result.action, 'value') else str(result.action)
+		self.latest_action = result.state.value if hasattr(result.state, 'value') else str(result.state)
 		self.latest_mode = result.target_mode
 		self.latest_reserve = result.soc_floor
 		self.latest_counters = self._extract_counters(epcube_data)

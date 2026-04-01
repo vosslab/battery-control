@@ -100,5 +100,5 @@ The controller tries this order:
 Each run prints a one-line summary suitable for cron logs:
 
 ```
-[DRY] 2025-07-15 18:03 discharge_enabled | Mode: Self-consumption | reserve 45% | Peak mid_high: SoC 70% above 45% floor, discharge enabled
+[DRY] 2026-04-01 18:03 above_cutoff | Mode: Self-consumption | reserve 45% | Above cutoff: price 9.1c >= cutoff 6.6c, floor 45%
 ```

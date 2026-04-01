@@ -72,12 +72,15 @@ def _set_plug_state(device_name: str, state_on: bool, dry_run: bool) -> bool:
 
 
 #============================================
-def execute_wemo(action: battcontrol.decision_engine.Action, config: dict, dry_run: bool) -> bool:
+def execute_wemo(state: battcontrol.decision_engine.StrategyState, config: dict, dry_run: bool) -> bool:
 	"""
-	Translate a decision action into WeMo smart plug commands.
+	Translate a strategy state into WeMo smart plug commands.
+
+	Above cutoff: discharge plug ON (battery serves load).
+	Below cutoff: both plugs OFF (battery holds).
 
 	Args:
-		action: Action enum from the decision engine.
+		state: StrategyState from the decision engine.
 		config: Configuration dictionary with plug names.
 		dry_run: If True, log but do not send commands.
 
@@ -90,14 +93,14 @@ def execute_wemo(action: battcontrol.decision_engine.Action, config: dict, dry_r
 	if not charge_plug and not discharge_plug:
 		logger.info("No WeMo plugs configured, skipping WeMo actuator")
 		return False
-	if action == battcontrol.decision_engine.Action.DISCHARGE_ENABLED:
-		# turn on discharge plug, turn off charge plug
-		logger.info("WeMo: discharge enabled")
+	if state == battcontrol.decision_engine.StrategyState.ABOVE_CUTOFF:
+		# above cutoff: turn on discharge plug, turn off charge plug
+		logger.info("WeMo: above cutoff, discharge plug on")
 		_set_plug_state(charge_plug, False, dry_run)
 		success = _set_plug_state(discharge_plug, True, dry_run)
 		return success
-	# CHARGE_FROM_SOLAR or DISCHARGE_DISABLED: turn off both plugs
-	logger.info("WeMo: discharge disabled (both plugs off)")
+	# below cutoff: turn off both plugs
+	logger.info("WeMo: below cutoff, both plugs off")
 	_set_plug_state(charge_plug, False, dry_run)
 	_set_plug_state(discharge_plug, False, dry_run)
 	return True

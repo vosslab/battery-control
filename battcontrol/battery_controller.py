@@ -470,7 +470,7 @@ def main() -> None:
 	if comed_price is None:
 		logger.warning("ComEd price unavailable, holding current state")
 		control_state.save()
-		_print_summary("discharge_disabled", "Backup", 0, "ComEd unavailable", dry_run)
+		_print_summary("below_cutoff", "Self-consumption", 0, "ComEd unavailable", dry_run)
 		return
 	# fetch EP Cube data
 	epcube_data, epcube_client = _fetch_epcube_data(config, control_state)
@@ -483,7 +483,7 @@ def main() -> None:
 		# no device data available, hold current state
 		logger.warning("EP Cube data unavailable, holding current state")
 		control_state.save()
-		_print_summary("discharge_disabled", "Backup", 0, "EP Cube unavailable", dry_run)
+		_print_summary("below_cutoff", "Self-consumption", 0, "EP Cube unavailable", dry_run)
 		return
 	battery_soc = epcube_data.get("battery_soc", 0)
 	solar_power = epcube_data.get("solar_power_watts", 0)
@@ -534,14 +534,13 @@ def main() -> None:
 		charge_plug = config.get("wemo_charge_plug_name", "")
 		discharge_plug = config.get("wemo_discharge_plug_name", "")
 		if charge_plug or discharge_plug:
-			battcontrol.wemo_actuator.execute_wemo(result.action, config, dry_run)
+			battcontrol.wemo_actuator.execute_wemo(result.state, config, dry_run)
 	else:
 		logger.info("No EP Cube update: %s", buffer_reason)
 	# save state
 	control_state.save()
 	# print summary line for cron log
-	mode_name = battcontrol.decision_engine.TARGET_MODE_DISPLAY.get(result.target_mode, result.target_mode)
-	_print_summary(result.action.value, mode_name, result.soc_floor, result.reason, dry_run)
+	_print_summary(result.state.value, "Self-consumption", result.soc_floor, result.reason, dry_run)
 
 
 #============================================

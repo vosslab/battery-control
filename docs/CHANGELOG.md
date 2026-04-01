@@ -2,6 +2,30 @@
 
 ## 2026-04-01
 
+### Behavior or Interface Changes
+
+- Replaced three-action model (`CHARGE_FROM_SOLAR`, `DISCHARGE_ENABLED`,
+  `DISCHARGE_DISABLED`) with two-state price-first model (`BELOW_CUTOFF`,
+  `ABOVE_CUTOFF`); primary decision axis is now price vs cutoff, not
+  solar/load flow direction
+- Below cutoff always sets reserve to 100% (battery holds, no discharge);
+  previously set reserve to current SoC which allowed unintended discharge
+  of newly charged energy
+- Above cutoff uses price-to-SoC interpolation for reserve floor; night
+  clamp ensures floor is at least `night_floor_pct` when no solar
+- Removed day/night and surplus/deficit routing as top-level decision
+  branches; solar availability only affects the night floor clamp
+- Always uses self-consumption mode; removed backup mode from strategy
+  (backup mode grid-charges when reserve exceeds SoC, violating site
+  constraint)
+- Added cutoff deadband (default 0.5c) to prevent state chattering near
+  the cutoff boundary; previous state is preserved within the deadband
+- Added `last_strategy_state` to control state for deadband persistence
+- Updated [docs/STRATEGY.md](docs/STRATEGY.md) to document price-first
+  model, deadband behavior, and simplified flow chart
+- Updated WeMo actuator to use `StrategyState` instead of `Action`:
+  discharge plug ON when above cutoff, both plugs OFF when below cutoff
+
 ### Removals and Deprecations
 
 - Removed `_peak_logic()` and `_is_in_peak_window()` from strategy; peak-window

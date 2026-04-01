@@ -252,13 +252,12 @@ class TestExecuteEpcube:
 	"""Tests for execute_epcube actuator function."""
 
 	#============================================
-	def test_dry_run_backup_mode(self):
-		"""Dry run logs backup mode change without sending."""
+	def test_dry_run_self_consumption(self):
+		"""Dry run logs self-consumption mode change without sending."""
 		result = battcontrol.strategy.DecisionResult(
-			action=battcontrol.strategy.Action.DISCHARGE_DISABLED,
+			state=battcontrol.strategy.StrategyState.BELOW_CUTOFF,
 			reason="test",
-			soc_floor=50,
-			target_mode="backup",
+			soc_floor=100,
 		)
 		client = mock.Mock()
 		client.get_device_data.return_value = {"work_status": "1"}
@@ -272,10 +271,9 @@ class TestExecuteEpcube:
 	def test_no_client(self):
 		"""No client returns False."""
 		result = battcontrol.strategy.DecisionResult(
-			action=battcontrol.strategy.Action.DISCHARGE_DISABLED,
+			state=battcontrol.strategy.StrategyState.BELOW_CUTOFF,
 			reason="test",
-			soc_floor=50,
-			target_mode="backup",
+			soc_floor=100,
 		)
 		success = epcube_client.execute_epcube(result, None, {}, dry_run=False)
 		assert success is False

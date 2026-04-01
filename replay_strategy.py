@@ -164,6 +164,7 @@ def run_replay(
 	# replay each hour
 	replay_results = []
 	simulated_soc = 50.0  # start at nominal
+	previous_state = None  # no previous state on first iteration
 
 	for row in hourly_data:
 		hour_start_str = row.get('hour_start', '')
@@ -205,12 +206,17 @@ def run_replay(
 			comed_cutoff_cents=comed_cutoff,
 			current_time=current_time,
 			config=config,
+			previous_state=previous_state,
 		)
+		previous_state = decision.state
 
-		# simulate SoC transition
-		if decision.action == battcontrol.strategy.Action.CHARGE_FROM_SOLAR:
+		# simulate SoC transition based on economic regime
+		if decision.state == battcontrol.strategy.StrategyState.BELOW_CUTOFF:
+			# below cutoff: battery charges from solar, no discharge
 			simulated_soc += actual_battery_charge_kwh * 100.0 / capacity_kwh
-		elif decision.action == battcontrol.strategy.Action.DISCHARGE_ENABLED:
+		else:
+			# above cutoff: apply both charge and discharge
+			simulated_soc += actual_battery_charge_kwh * 100.0 / capacity_kwh
 			simulated_soc -= actual_battery_discharge_kwh * 100.0 / capacity_kwh
 
 		# clamp to hard reserve and 100
@@ -253,7 +259,7 @@ def run_replay(
 			'replayed_savings_cents': replayed_savings_cents,
 			'improvement_cents': improvement_cents,
 			'actual_action': row.get('policy_action', ''),
-			'replayed_action': decision.action.value,
+			'replayed_action': decision.state.value,
 		})
 
 	# group by date for summary

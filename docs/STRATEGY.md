@@ -18,7 +18,7 @@ strategy decisions:
 
 The controller cannot set a discharge rate. It can only:
 
-- Choose the EP Cube mode (Self-consumption or Backup).
+- Choose the EP Cube mode (always Self-consumption under current strategy).
 - Set the reserve SoC floor.
 
 The inverter decides the actual discharge rate based on house load. The controller influences discharge indirectly by raising or lowering the SoC floor.
@@ -38,15 +38,20 @@ EP Cube reports these power readings via the `homeDeviceInfo` API endpoint (raw 
 | `batterySoc` | `battery_soc` | Battery state of charge (percent) |
 | `workStatus` | `work_status` | Current EP Cube mode number |
 
-## Controller policy actions
+## Price-first policy
 
-The controller uses three policy actions. Each determines intent, EP Cube mode, and SoC reserve rule:
+The primary decision axis is **price vs cutoff**, not solar/load flow direction. The controller sets a stable battery policy for each control interval. Solar and load determine physical outcomes under that policy, but do not change the policy itself.
 
-| Policy action | Intent | EP Cube mode | WeMo | Reserve SoC rule |
+### Strategy states
+
+| State | Intent | EP Cube mode | WeMo | Reserve SoC rule |
 | --- | --- | --- | --- | --- |
-| `CHARGE_FROM_SOLAR` | Fill battery from PV | Self-consumption | both off | target SoC 100% (all seasons) |
-| `DISCHARGE_ENABLED` | Battery serves load | Self-consumption | discharge on | floor from interpolated price anchors |
-| `DISCHARGE_DISABLED` | Block discharge | Backup | both off | max(current SoC, configured hold floor) |
+| `BELOW_CUTOFF` | Cheap grid, hold battery | Self-consumption | both off | 100% (battery does not discharge) |
+| `ABOVE_CUTOFF` | Expensive grid, use battery | Self-consumption | discharge on | floor from interpolated price anchors |
+
+### Why price-first
+
+Solar and load can flip between control intervals (clouds, appliance cycles). A policy based on instantaneous flow direction produces fragile decisions. The price regime is stable over minutes to hours, so a price-first policy survives fluctuations. The EP Cube in self-consumption mode already handles solar/load transitions correctly once given a mode and reserve.
 
 ### Seasonal intent
 
@@ -66,48 +71,52 @@ The price fed to the decision engine is not the instantaneous ComEd rate. It com
 
 The controller also fetches `comedlib.getReasonableCutOff()`, a time-aware cutoff price that determines whether energy should be conserved or consumed. The cutoff starts from the 75th percentile of 24-hour rates, adjusts for weekends (+0.9c), late night (+0.8c), and solar peak hours (Gaussian bonus up to +1.5c centered at noon), with a floor of 1.0c.
 
-- If predicted rate > cutoff: **conserve** (prices are high, export surplus to grid)
-- If predicted rate <= cutoff: **consume** (prices are low, charge battery from surplus)
-
-This cutoff is the primary gate for discharge decisions in both daylight and night logic. Time-of-day effects come through the cutoff itself (which adjusts for solar peak hours, late night, and weekends), not through a separate peak-window state machine.
+- If predicted rate > cutoff: **above cutoff** (prices are high, allow battery discharge)
+- If predicted rate <= cutoff: **below cutoff** (prices are low, hold battery, charge from solar)
 
 ## Flow chart
 
 ### A. Guards (always run first)
 
 1. If battery SoC <= Hard Reserve (example 20% winter, 15% shoulder, 10% summer)
-Then: `DISCHARGE_DISABLED`. Stop.
-2. If inverter solar power is unavailable (night or inverter off)
-Then: go to Night logic (section D).
-3. Otherwise solar is available
-Then: go to Daylight logic (section B).
+Then: `BELOW_CUTOFF` with reserve at hard reserve. Stop.
 
-### B. Daylight logic (solar capture)
+### B. Cutoff deadband
 
-Goal: charge from solar. Avoid discharging unless prices are above cutoff or you need headroom to avoid wasting solar.
+A deadband stabilizes the decision boundary to prevent chattering near the cutoff.
 
-1. Compute "Solar Surplus" = solar generation minus house load.
-If you cannot measure load, approximate surplus by battery charging rate or net export if available.
-2. If Surplus > 0 (solar is excess)
-  - 2x. If predicted price > usage cutoff (conserve mode): export surplus to grid instead of charging battery. Use price-to-SoC anchors for the discharge floor so the battery is ready to respond instantly if a load spike exceeds solar, without waiting up to 2 minutes for the next controller cycle. `DISCHARGE_ENABLED` with interpolated floor. Stop.
-  - 2a. If SoC < 100%
-Then: `CHARGE_FROM_SOLAR` to fill battery. Stop.
-  - 2b. If SoC >= 100% (battery full)
-Then: create headroom only if needed. If battery is near full and price is above cutoff, `DISCHARGE_ENABLED` with interpolated price floor. If battery is near full and price is negative, also `DISCHARGE_ENABLED` with headroom band to absorb solar instead of exporting at a loss. Otherwise `CHARGE_FROM_SOLAR`. Stop.
-3. If Surplus <= 0 (solar not excess, likely clouds or high load)
-  - 3a. If predicted price > usage cutoff: `DISCHARGE_ENABLED` with interpolated price floor. Stop.
-  - 3b. Else: `DISCHARGE_DISABLED` to preserve SoC for evening. Stop.
+- If price <= cutoff - buffer: `BELOW_CUTOFF`
+- If price >= cutoff + buffer: `ABOVE_CUTOFF`
+- If price is within the deadband: keep previous state
 
-### C. Night logic (no solar)
+Default buffer is 0.5 cents. On startup (no previous state), raw comparison is used.
 
-Goal: preserve battery unless prices justify discharge.
+Example with cutoff 6.6c and buffer 0.5c:
+- price <= 6.1c: BELOW_CUTOFF
+- price >= 7.1c: ABOVE_CUTOFF
+- 6.1c < price < 7.1c: keep current state
 
-- If price > usage cutoff and SoC > Night Floor: `DISCHARGE_ENABLED` with interpolated price floor (clamped to at least Night Floor, example 35% winter, 30% shoulder, 25% summer).
-- Otherwise: `DISCHARGE_DISABLED` with Night Floor.
+The command buffer separately protects the output from flapping; the deadband protects the decision boundary itself.
+
+### C. Below cutoff (cheap grid)
+
+Goal: do not spend battery. Grid is cheap.
+
+- Self-consumption mode, reserve 100%
+- Physical outcome: solar charges battery if surplus, grid covers any deficit, battery does not discharge
+- Exception: negative price headroom. If SoC >= 95% and price is negative, set reserve to 85% to create room for solar absorption instead of exporting at a loss
+
+### D. Above cutoff (expensive grid)
+
+Goal: allow battery to serve load, reduce grid purchases.
+
+- Self-consumption mode, reserve from price-SoC interpolation anchors
+- If no solar available (night): clamp floor to at least night_floor_pct
+- Physical outcome: battery discharges to cover load down to the price floor
 
 ### Price-floor interpolation
 
-When price > cutoff and discharge is allowed, the SoC floor is computed by piecewise linear interpolation between season-adjusted anchor points. Prices below the first anchor clamp to its floor; prices above the last anchor clamp to its floor. Between anchors the floor changes smoothly.
+When above cutoff, the SoC floor is computed by piecewise linear interpolation between season-adjusted anchor points. Prices below the first anchor clamp to its floor; prices above the last anchor clamp to its floor. Between anchors the floor changes smoothly.
 
 Higher prices produce lower floors (more aggressive discharge). Lower prices produce higher floors (more conservative).
 
@@ -140,10 +149,10 @@ Winter anchors (more conservative):
 
 Example: summer price 9c is midway between 8c and 10c, so floor = 40%.
 
-### D. Command buffering
+### E. Command buffering
 
 The command buffer prevents flapping by requiring the desired EP Cube state to be stable before sending hardware commands. Minimum SoC change threshold and optional periodic resend are configurable. See the command buffer module for details.
 
 ## Summary
 
-The controller uses three policy actions (`CHARGE_FROM_SOLAR`, `DISCHARGE_ENABLED`, `DISCHARGE_DISABLED`) driven by predicted price vs cutoff, solar availability, and SoC. Each action maps to an EP Cube mode and a reserve SoC rule. The inverter handles actual power flow based on house load. Three seasons (summer, shoulder, winter) drive discharge floor behavior. All seasons charge to 100% from solar; seasons differ in discharge floors and reserves. Time-of-day effects come through the comedlib cutoff (which adjusts for solar peak hours, late night, and weekends), not through a separate peak-window routing state.
+The controller uses two strategy states (`BELOW_CUTOFF`, `ABOVE_CUTOFF`) driven by predicted price vs cutoff. Both states use self-consumption mode; only the reserve SoC changes. Below cutoff: reserve 100% (hold battery). Above cutoff: reserve from price-SoC interpolation. The inverter handles actual power flow based on house load and solar availability. Three seasons (summer, shoulder, winter) drive discharge floor behavior. Time-of-day effects come through the comedlib cutoff (which adjusts for solar peak hours, late night, and weekends), not through separate day/night routing.

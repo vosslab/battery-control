@@ -22,6 +22,6 @@ class TestExecuteWemo:
 		"""No WeMo plugs configured returns False."""
 		config = {"wemo_charge_plug_name": "", "wemo_discharge_plug_name": ""}
 		result = battcontrol.wemo_actuator.execute_wemo(
-			battcontrol.decision_engine.Action.DISCHARGE_DISABLED, config, dry_run=True
+			battcontrol.decision_engine.StrategyState.BELOW_CUTOFF, config, dry_run=True
 		)
 		assert result is False
