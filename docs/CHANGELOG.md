@@ -2,6 +2,22 @@
 
 ## 2026-04-01
 
+### Additions and New Features
+
+- Added time-period reserve adjustment on top of price-mapped floor in
+  ABOVE_CUTOFF: evening (13:00-23:00) adds `time_adjust_soc_pct` (default +5%),
+  morning (02:00-10:00) subtracts `time_adjust_soc_pct` (default -5%),
+  neutral hours have no adjustment; all values configurable, fixed year-round
+- Added `validate_time_adjust()` in config.py to validate hour ranges,
+  non-overlap, and non-negative adjustment
+
+### Removals and Deprecations
+
+- Removed night clamp from ABOVE_CUTOFF path: `_is_solar_available()`,
+  `night_floor_pct` config, `solar_sunset_threshold_watts` config, and
+  `solar_sunset_duration_minutes` config; solar availability no longer
+  shapes the reserve floor, replaced by explicit time-period adjustment
+
 ### Behavior or Interface Changes
 
 - Replaced three-action model (`CHARGE_FROM_SOLAR`, `DISCHARGE_ENABLED`,

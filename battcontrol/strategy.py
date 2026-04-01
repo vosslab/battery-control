@@ -72,24 +72,6 @@ class DecisionResult:
 
 
 #============================================
-def _is_solar_available(solar_power_watts: float, threshold: float = 50.0) -> bool:
-	"""
-	Check if meaningful solar power is available.
-
-	Used to determine whether to apply the night floor clamp on the
-	above-cutoff price floor. Not used for policy routing.
-
-	Args:
-		solar_power_watts: Current solar generation in watts.
-		threshold: Minimum watts to consider solar available.
-
-	Returns:
-		bool: True if solar is available.
-	"""
-	return solar_power_watts > threshold
-
-
-#============================================
 def _determine_state(
 	comed_price_cents: float,
 	comed_cutoff_cents: float,
@@ -224,29 +206,35 @@ def evaluate(
 		logger.info("Decision: %s", result)
 		return result
 	# above cutoff: expensive grid, allow battery use
-	price_floor = battcontrol.config.get_price_floor(
+	base_price_floor = battcontrol.config.get_price_floor(
 		config, season, comed_price_cents
 	)
-	# night clamp: if no solar, enforce at least night_floor
-	solar_threshold = config.get("solar_sunset_threshold_watts", 50)
-	solar_available = _is_solar_available(solar_power_watts, solar_threshold)
-	if not solar_available:
-		night_floor = battcontrol.config.get_seasonal_value(
-			config, "night_floor_pct", season
-		)
-		if price_floor < night_floor:
-			logger.info(
-				"Night clamp: price floor %d%% raised to night floor %d%%",
-				price_floor, night_floor,
-			)
-			price_floor = max(price_floor, night_floor)
+	# time-period reserve adjustment
+	hour = current_time.hour
+	time_adjust = config.get("time_adjust_soc_pct", 5)
+	evening_start = config.get("evening_adjust_start_hour", 13)
+	evening_end = config.get("evening_adjust_end_hour", 23)
+	morning_start = config.get("morning_adjust_start_hour", 2)
+	morning_end = config.get("morning_adjust_end_hour", 10)
+	adjust = 0
+	period_label = ""
+	if evening_start <= hour <= evening_end:
+		# preserve more battery for later expensive load
+		adjust = time_adjust
+		period_label = f", evening +{time_adjust}%"
+	elif morning_start <= hour <= morning_end:
+		# allow more battery use now because solar is likely coming
+		adjust = -time_adjust
+		period_label = f", morning -{time_adjust}%"
+	final_floor = max(0, min(100, base_price_floor + adjust))
 	reason = (f"Above cutoff: price {comed_price_cents:.1f}c >= "
-		f"cutoff {comed_cutoff_cents:.1f}c, floor {price_floor}%")
+		f"cutoff {comed_cutoff_cents:.1f}c, base floor {base_price_floor}%"
+		f"{period_label}, reserve {final_floor}%")
 	logger.info(reason)
 	result = DecisionResult(
 		state=StrategyState.ABOVE_CUTOFF,
 		reason=reason,
-		soc_floor=price_floor,
+		soc_floor=final_floor,
 	)
 	logger.info("Decision: %s", result)
 	return result

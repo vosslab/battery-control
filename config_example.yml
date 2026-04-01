@@ -26,11 +26,6 @@ price_floor_anchors:
     - { price_cents: 20, soc_floor_pct: 30 }
     - { price_cents: 30, soc_floor_pct: 20 }
 
-# Conservative night floor (no solar available)
-night_floor_pct:
-  summer: 25
-  winter: 35
-
 # Headroom band for near-full battery during solar surplus
 # If SoC >= headroom_band_high, allow limited discharge to create room
 headroom_band_low: 85
@@ -42,9 +37,14 @@ reserve_soc_buffer_pct: 2
 # Command buffer: optional periodic resend interval (0 = disabled)
 epcube_resend_interval_minutes: 0
 
-# Solar fade detection
-solar_sunset_threshold_watts: 50
-solar_sunset_duration_minutes: 20
+# Time-period reserve adjustment on top of price floor (above cutoff only)
+# Evening: +time_adjust_soc_pct (preserve more battery for later expensive load)
+# Morning: -time_adjust_soc_pct (allow more battery use, solar is likely coming)
+time_adjust_soc_pct: 5
+evening_adjust_start_hour: 13
+evening_adjust_end_hour: 23
+morning_adjust_start_hour: 2
+morning_adjust_end_hour: 10
 
 # Season: 'auto' (May-Sep=summer), 'summer', or 'winter'
 season: auto

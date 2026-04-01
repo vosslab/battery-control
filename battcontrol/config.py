@@ -36,8 +36,6 @@ DEFAULTS = {
 			{"price_cents": 30, "soc_floor_pct": 20},
 		],
 	},
-	# conservative night floor when not in peak window
-	"night_floor_pct": {"summer": 25, "shoulder": 30, "winter": 35},
 	# headroom band for near-full battery during solar surplus
 	"headroom_band_low": 85,
 	"headroom_band_high": 95,
@@ -45,9 +43,12 @@ DEFAULTS = {
 	"reserve_soc_buffer_pct": 2,
 	# command buffer: optional periodic resend (0 = disabled)
 	"epcube_resend_interval_minutes": 0,
-	# solar fade detection thresholds
-	"solar_sunset_threshold_watts": 50,
-	"solar_sunset_duration_minutes": 20,
+	# time-period reserve adjustment on top of price floor (above cutoff only)
+	"time_adjust_soc_pct": 5,
+	"evening_adjust_start_hour": 13,
+	"evening_adjust_end_hour": 23,
+	"morning_adjust_start_hour": 2,
+	"morning_adjust_end_hour": 10,
 	# season auto-detection or manual override
 	"season": "auto",
 	# EP Cube connection settings
@@ -206,6 +207,42 @@ def validate_anchors(anchors: list) -> None:
 				f"Anchor prices must be strictly increasing: "
 				f"{prices[i]} >= {prices[i + 1]} at index {i}"
 			)
+
+
+#============================================
+def validate_time_adjust(config: dict) -> None:
+	"""
+	Validate time-period adjustment configuration.
+
+	Args:
+		config: Configuration dictionary.
+
+	Raises:
+		ValueError: If hour ranges are invalid or overlap.
+	"""
+	time_adjust = config.get("time_adjust_soc_pct", 5)
+	if time_adjust < 0:
+		raise ValueError(f"time_adjust_soc_pct must be >= 0, got {time_adjust}")
+	evening_start = config.get("evening_adjust_start_hour", 13)
+	evening_end = config.get("evening_adjust_end_hour", 23)
+	morning_start = config.get("morning_adjust_start_hour", 2)
+	morning_end = config.get("morning_adjust_end_hour", 10)
+	# validate ranges
+	for name, val in [("evening_start", evening_start), ("morning_start", morning_start)]:
+		if not (0 <= val < 24):
+			raise ValueError(f"{name} must be 0..23, got {val}")
+	for name, val in [("evening_end", evening_end), ("morning_end", morning_end)]:
+		if not (0 <= val <= 23):
+			raise ValueError(f"{name} must be 0..23, got {val}")
+	# check overlap: build hour sets and intersect
+	evening_hours = set(range(evening_start, evening_end + 1))
+	morning_hours = set(range(morning_start, morning_end + 1))
+	overlap = evening_hours & morning_hours
+	if overlap:
+		raise ValueError(
+			f"Evening ({evening_start}-{evening_end}) and morning "
+			f"({morning_start}-{morning_end}) windows overlap at hours {sorted(overlap)}"
+		)
 
 
 #============================================

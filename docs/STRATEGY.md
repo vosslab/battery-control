@@ -111,8 +111,20 @@ Goal: do not spend battery. Grid is cheap.
 Goal: allow battery to serve load, reduce grid purchases.
 
 - Self-consumption mode, reserve from price-SoC interpolation anchors
-- If no solar available (night): clamp floor to at least night_floor_pct
-- Physical outcome: battery discharges to cover load down to the price floor
+- Time-period adjustment applied on top of interpolated floor (see below)
+- Physical outcome: battery can serve load down to the adjusted reserve floor
+
+#### Time-period reserve adjustment
+
+After interpolating the base price floor, a small configurable bias is applied based on time of day. This is explicit and symmetric -- it does not depend on solar availability.
+
+- **Evening** (13:00-23:00 inclusive): base floor + `time_adjust_soc_pct` (default +5%). Preserve more battery for later expensive load.
+- **Morning** (02:00-10:00 inclusive): base floor - `time_adjust_soc_pct` (default -5%). Allow more battery use because solar is likely coming.
+- **Neutral** (00:00-01:00, 11:00-12:00): base floor only, no adjustment.
+
+The adjustment applies only above cutoff. Below cutoff is always reserve 100%, no time adjustment.
+
+All values (`time_adjust_soc_pct`, start/end hours) are configurable. Final floor is clamped to 0-100%.
 
 ### Price-floor interpolation
 
@@ -155,4 +167,4 @@ The command buffer prevents flapping by requiring the desired EP Cube state to b
 
 ## Summary
 
-The controller uses two strategy states (`BELOW_CUTOFF`, `ABOVE_CUTOFF`) driven by predicted price vs cutoff. Both states use self-consumption mode; only the reserve SoC changes. Below cutoff: reserve 100% (hold battery). Above cutoff: reserve from price-SoC interpolation. The inverter handles actual power flow based on house load and solar availability. Three seasons (summer, shoulder, winter) drive discharge floor behavior. Time-of-day effects come through the comedlib cutoff (which adjusts for solar peak hours, late night, and weekends), not through separate day/night routing.
+The controller uses two strategy states (`BELOW_CUTOFF`, `ABOVE_CUTOFF`) driven by predicted price vs cutoff. Both states use self-consumption mode; only the reserve SoC changes. Below cutoff: reserve 100%, battery is preserved, load supplied by grid when solar is insufficient. Above cutoff: reserve follows the price map adjusted by time period, battery can serve load down to that reserve. The inverter handles actual power flow based on house load and solar availability. Three seasons (summer, shoulder, winter) drive discharge floor behavior. Time-of-day effects come through two mechanisms: the comedlib cutoff (which adjusts for solar peak hours, late night, and weekends), and the time-period reserve adjustment (evening +5%, morning -5% on the interpolated floor).
