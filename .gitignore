@@ -1,4 +1,5 @@
 battery_controller.log
+epcube_*.json
 epcube/
 _*.py
 _*.sh

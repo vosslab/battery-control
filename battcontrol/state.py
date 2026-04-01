@@ -1,4 +1,4 @@
-"""Hysteresis and state persistence for battery control system."""
+"""Command buffer state and persistence for battery control system."""
 
 # Standard Library
 import os
@@ -9,24 +9,22 @@ import datetime
 
 # default state values
 _DEFAULT_STATE = {
-	"price_segment_counter": 0,
-	"current_price_segment": -999,
 	"last_action": "",
-	"action_stable_count": 0,
-	"peak_mode_active": False,
-	"peak_mode_entered_at": None,
-	"last_solar_above_threshold_at": None,
 	"last_commanded_floor": None,
 	"token_expired": False,
 	"token_expired_at": None,
 	"token_last_success_at": None,
+	# command buffer state (replaces hysteresis counters)
+	"last_epcube_mode": "",
+	"last_epcube_reserve_soc": None,
+	"last_epcube_command_at": None,
 }
 
 
 #============================================
 class ControlState:
 	"""
-	Manages hysteresis counters and last-action state.
+	Manages command buffer state and token tracking.
 
 	Persists to a JSON file for continuity between scheduler runs.
 	"""
@@ -69,47 +67,6 @@ class ControlState:
 		with open(tmp_path, "w") as f:
 			json.dump(data, f, indent=2)
 		os.replace(tmp_path, self.file_path)
-
-	#============================================
-	def reset_daily(self) -> None:
-		"""
-		Clear peak mode state for a new day.
-		"""
-		self.peak_mode_active = False
-		self.peak_mode_entered_at = None
-
-	#============================================
-	def update_price_segment(self, new_segment: int) -> bool:
-		"""
-		Update price segment tracking with hysteresis.
-
-		Args:
-			new_segment: The segment index from get_price_segment_index().
-
-		Returns:
-			bool: True if segment changed (counter reset), False if same.
-		"""
-		if new_segment == self.current_price_segment:
-			self.price_segment_counter += 1
-			return False
-		# segment changed, reset counter
-		self.current_price_segment = new_segment
-		self.price_segment_counter = 1
-		return True
-
-	#============================================
-	def update_action(self, new_action: str) -> None:
-		"""
-		Track action stability for token friction.
-
-		Args:
-			new_action: The action string from the decision engine.
-		"""
-		if new_action == self.last_action:
-			self.action_stable_count += 1
-		else:
-			self.last_action = new_action
-			self.action_stable_count = 1
 
 	#============================================
 	def mark_token_expired(self) -> None:

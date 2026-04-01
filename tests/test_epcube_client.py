@@ -118,6 +118,133 @@ class TestEpcubeClient:
 		success = client.set_mode(1, reserve_soc=15)
 		assert success is False
 
+	#============================================
+	@mock.patch("battcontrol.epcube_client.requests.get")
+	@mock.patch("battcontrol.epcube_client.time.sleep")
+	def test_get_device_data_electricity_counters(self, mock_sleep, mock_get):
+		"""All 6 electricity counter fields present with realistic values."""
+		mock_resp = mock.Mock()
+		mock_resp.status_code = 200
+		mock_resp.json.return_value = {
+			"data": {
+				"batterySoc": 75,
+				"solarPower": 300,
+				"gridPower": 50,
+				"backupPower": 200,
+				"workStatus": "1",
+				"devId": "DEV123",
+				"gridElectricity": 1234.56,
+				"solarElectricity": 5678.90,
+				"smartHomeElectricity": 234.5,
+				"backupElectricity": 123.4,
+				"batteryCurrentElectricity": 456.78,
+				"nonBackupElectricity": 89.01,
+			}
+		}
+		mock_get.return_value = mock_resp
+		client = epcube_client.EpcubeClient("token", "US", "SN123")
+		data = client.get_device_data()
+		assert data is not None
+		assert data["grid_electricity_kwh"] == 1234.56
+		assert data["solar_electricity_kwh"] == 5678.90
+		assert data["smart_home_electricity_kwh"] == 234.5
+		assert data["backup_electricity_kwh"] == 123.4
+		assert data["battery_electricity_kwh"] == 456.78
+		assert data["non_backup_electricity_kwh"] == 89.01
+
+	#============================================
+	@mock.patch("battcontrol.epcube_client.requests.get")
+	@mock.patch("battcontrol.epcube_client.time.sleep")
+	def test_get_device_data_missing_electricity_fields(self, mock_sleep, mock_get):
+		"""All 6 electricity fields missing return None."""
+		mock_resp = mock.Mock()
+		mock_resp.status_code = 200
+		mock_resp.json.return_value = {
+			"data": {
+				"batterySoc": 75,
+				"solarPower": 300,
+				"gridPower": 50,
+				"backupPower": 200,
+				"workStatus": "1",
+				"devId": "DEV123",
+			}
+		}
+		mock_get.return_value = mock_resp
+		client = epcube_client.EpcubeClient("token", "US", "SN123")
+		data = client.get_device_data()
+		assert data is not None
+		assert data["grid_electricity_kwh"] is None
+		assert data["solar_electricity_kwh"] is None
+		assert data["smart_home_electricity_kwh"] is None
+		assert data["backup_electricity_kwh"] is None
+		assert data["battery_electricity_kwh"] is None
+		assert data["non_backup_electricity_kwh"] is None
+
+	#============================================
+	@mock.patch("battcontrol.epcube_client.requests.get")
+	@mock.patch("battcontrol.epcube_client.time.sleep")
+	def test_get_device_data_zero_electricity_fields(self, mock_sleep, mock_get):
+		"""All 6 electricity fields = 0.0 return 0.0 (not None)."""
+		mock_resp = mock.Mock()
+		mock_resp.status_code = 200
+		mock_resp.json.return_value = {
+			"data": {
+				"batterySoc": 75,
+				"solarPower": 300,
+				"gridPower": 50,
+				"backupPower": 200,
+				"workStatus": "1",
+				"devId": "DEV123",
+				"gridElectricity": 0.0,
+				"solarElectricity": 0.0,
+				"smartHomeElectricity": 0.0,
+				"backupElectricity": 0.0,
+				"batteryCurrentElectricity": 0.0,
+				"nonBackupElectricity": 0.0,
+			}
+		}
+		mock_get.return_value = mock_resp
+		client = epcube_client.EpcubeClient("token", "US", "SN123")
+		data = client.get_device_data()
+		assert data is not None
+		assert data["grid_electricity_kwh"] == 0.0
+		assert data["solar_electricity_kwh"] == 0.0
+		assert data["smart_home_electricity_kwh"] == 0.0
+		assert data["backup_electricity_kwh"] == 0.0
+		assert data["battery_electricity_kwh"] == 0.0
+		assert data["non_backup_electricity_kwh"] == 0.0
+
+	#============================================
+	@mock.patch("battcontrol.epcube_client.requests.get")
+	@mock.patch("battcontrol.epcube_client.time.sleep")
+	def test_get_device_data_partial_electricity_fields(self, mock_sleep, mock_get):
+		"""Mix of present and missing electricity fields."""
+		mock_resp = mock.Mock()
+		mock_resp.status_code = 200
+		mock_resp.json.return_value = {
+			"data": {
+				"batterySoc": 75,
+				"solarPower": 300,
+				"gridPower": 50,
+				"backupPower": 200,
+				"workStatus": "1",
+				"devId": "DEV123",
+				"gridElectricity": 999.99,
+				"solarElectricity": 888.88,
+				"backupElectricity": 0.0,
+			}
+		}
+		mock_get.return_value = mock_resp
+		client = epcube_client.EpcubeClient("token", "US", "SN123")
+		data = client.get_device_data()
+		assert data is not None
+		assert data["grid_electricity_kwh"] == 999.99
+		assert data["solar_electricity_kwh"] == 888.88
+		assert data["smart_home_electricity_kwh"] is None
+		assert data["backup_electricity_kwh"] == 0.0
+		assert data["battery_electricity_kwh"] is None
+		assert data["non_backup_electricity_kwh"] is None
+
 
 #============================================
 class TestExecuteEpcube:

@@ -1,4 +1,4 @@
-"""Tests for decision_engine.py - strategy flowchart logic."""
+"""Tests for decision_engine.py - thin orchestrator calling strategy."""
 
 # Standard Library
 import datetime
@@ -30,7 +30,7 @@ def _make_config() -> dict:
 
 #============================================
 class TestGuards:
-	"""Tests for section A: guard checks."""
+	"""Tests for section A: guard checks via decide()."""
 
 	#============================================
 	def test_hard_reserve_summer(self):
@@ -77,7 +77,7 @@ class TestGuards:
 
 #============================================
 class TestDaylightLogic:
-	"""Tests for section B: daylight logic."""
+	"""Tests for section B: daylight logic via decide()."""
 
 	#============================================
 	def test_solar_surplus_below_target(self):
@@ -96,7 +96,7 @@ class TestDaylightLogic:
 
 	#============================================
 	def test_solar_surplus_above_target_hold(self):
-		"""Solar surplus with SoC above target and normal price: charge from solar."""
+		"""Solar surplus with SoC above target and normal price: hold."""
 		config = _make_config()
 		cs = _make_state()
 		now = datetime.datetime(2025, 7, 15, 12, 0)
@@ -152,7 +152,7 @@ class TestDaylightLogic:
 
 #============================================
 class TestNightLogic:
-	"""Tests for section D: night logic."""
+	"""Tests for section D: night logic via decide()."""
 
 	#============================================
 	def test_night_extreme_price(self):
@@ -184,7 +184,7 @@ class TestNightLogic:
 
 #============================================
 class TestPeakLogic:
-	"""Tests for section E: peak logic."""
+	"""Tests for section E: peak logic via decide()."""
 
 	#============================================
 	def test_peak_high_price_discharge(self):
@@ -199,7 +199,8 @@ class TestPeakLogic:
 			config=config, control_state=cs, current_time=now,
 		)
 		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
-		assert result.soc_floor == 15  # summer 25c interpolated between 20c(20%) and 30c(10%)
+		# summer 25c interpolated between 20c(20%) and 30c(10%) = 15%
+		assert result.soc_floor == 15
 
 	#============================================
 	def test_peak_low_price_hold(self):
@@ -212,7 +213,6 @@ class TestPeakLogic:
 			comed_price_cents=3.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		# SoC 50% == low band floor 50%, should hold
 		assert result.action == decision_engine.Action.DISCHARGE_DISABLED
 
 	#============================================
@@ -242,188 +242,58 @@ class TestPeakLogic:
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.soc_floor == 38  # winter 15c interpolated between 10c(45%) and 20c(30%)
-
-	#============================================
-	def test_peak_mode_activation(self):
-		"""Peak logic activates peak_mode_active in state."""
-		config = _make_config()
-		cs = _make_state()
-		assert cs.peak_mode_active is False
-		now = datetime.datetime(2025, 7, 15, 18, 0)
-		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, load_power_watts=500,
-			comed_price_cents=15.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		assert cs.peak_mode_active is True
+		# winter 15c interpolated between 10c(45%) and 20c(30%) = 38%
+		assert result.soc_floor == 38
 
 
 #============================================
-class TestHysteresis:
-	"""Tests for section F: hysteresis and token friction."""
+class TestDecideTracksAction:
+	"""Tests that decide() updates last_action in state."""
 
 	#============================================
-	def test_price_segment_counter_increments(self):
-		"""Consecutive same-band checks increment counter."""
+	def test_last_action_updated(self):
+		"""decide() updates control_state.last_action."""
 		config = _make_config()
 		cs = _make_state()
-		now = datetime.datetime(2025, 7, 15, 18, 0)
-		# first check
-		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, load_power_watts=500,
-			comed_price_cents=15.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		first_count = cs.price_segment_counter
-		# second check, same price
-		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, load_power_watts=500,
-			comed_price_cents=15.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		assert cs.price_segment_counter == first_count + 1
-
-	#============================================
-	def test_action_stability_tracking(self):
-		"""Action stable count tracks consecutive identical decisions."""
-		config = _make_config()
-		cs = _make_state()
-		now = datetime.datetime(2025, 7, 15, 18, 0)
-		# two identical decisions
-		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, load_power_watts=500,
-			comed_price_cents=15.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, load_power_watts=500,
-			comed_price_cents=15.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		assert cs.action_stable_count >= 2
-
-
-#============================================
-class TestTransitionTrigger:
-	"""Tests for section C: transition from daylight to peak."""
-
-	#============================================
-	def test_time_trigger(self):
-		"""At peak_window_start, transition to peak logic."""
-		config = _make_config()
-		cs = _make_state()
-		# 4pm with solar
-		now = datetime.datetime(2025, 7, 15, 16, 0)
-		decision_engine.decide(
-			battery_soc=80, solar_power_watts=500, load_power_watts=200,
-			comed_price_cents=15.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		# should use peak logic since it's 4pm
-		assert cs.peak_mode_active is True
-
-	#============================================
-	def test_before_peak_daylight(self):
-		"""Before peak window with solar: daylight logic."""
-		config = _make_config()
-		cs = _make_state()
-		cs.last_solar_above_threshold_at = datetime.datetime(2025, 7, 15, 14, 0).isoformat()
-		now = datetime.datetime(2025, 7, 15, 14, 0)
+		now = datetime.datetime(2025, 7, 15, 12, 0)
 		result = decision_engine.decide(
 			battery_soc=60, solar_power_watts=3000, load_power_watts=1000,
 			comed_price_cents=5.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.CHARGE_FROM_SOLAR
-		assert cs.peak_mode_active is False
+		assert cs.last_action == result.action.value
 
 
 #============================================
-class TestSolarAndPeakTransition:
-	"""Tests for solar availability and peak transition logic."""
+class TestRouting:
+	"""Tests for routing by time of day and solar availability."""
 
 	#============================================
-	def test_no_solar_before_peak_enters_night(self):
-		"""No solar before peak window enters night logic (not peak)."""
+	def test_solar_in_peak_uses_peak(self):
+		"""Solar available during peak window uses peak logic."""
 		config = _make_config()
 		cs = _make_state()
-		# 3:30pm, solar gone, before peak window (default 4pm)
-		now = datetime.datetime(2025, 7, 15, 15, 30)
-		decision_engine.decide(
-			battery_soc=60, solar_power_watts=10, load_power_watts=200,
-			comed_price_cents=5.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		# not in peak window, so night logic (not peak)
-		assert cs.peak_mode_active is False
-
-	#============================================
-	def test_no_solar_during_peak_enters_peak(self):
-		"""No solar during peak window enters peak logic."""
-		config = _make_config()
-		cs = _make_state()
-		# 5pm, solar gone, in peak window
-		now = datetime.datetime(2025, 7, 15, 17, 0)
-		decision_engine.decide(
-			battery_soc=60, solar_power_watts=10, load_power_watts=200,
-			comed_price_cents=12.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		assert cs.peak_mode_active is True
-
-	#============================================
-	def test_solar_strong_resets_timer(self):
-		"""Solar above threshold updates the last-above timestamp."""
-		config = _make_config()
-		cs = _make_state()
-		old_time = datetime.datetime(2025, 7, 15, 14, 0)
-		cs.last_solar_above_threshold_at = old_time.isoformat()
-		now = datetime.datetime(2025, 7, 15, 15, 0)
-		decision_engine.decide(
-			battery_soc=60, solar_power_watts=3000, load_power_watts=200,
-			comed_price_cents=5.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		# timestamp should be updated to now (solar was strong)
-		updated = datetime.datetime.fromisoformat(cs.last_solar_above_threshold_at)
-		assert updated > old_time
-
-
-#============================================
-class TestStabilizedField:
-	"""Tests for the stabilized field on DecisionResult."""
-
-	#============================================
-	def test_first_decision_not_stabilized(self):
-		"""First decision is not stabilized (friction count not met)."""
-		config = _make_config()
-		cs = _make_state()
+		# 5pm with solar
 		now = datetime.datetime(2025, 7, 15, 17, 0)
 		result = decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, load_power_watts=200,
+			battery_soc=80, solar_power_watts=500, load_power_watts=200,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		# first call: action_stable_count == 1, friction_count default == 2
-		assert result.stabilized is False
+		# peak logic: above floor -> discharge enabled
+		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
 
 	#============================================
-	def test_repeated_decision_stabilizes(self):
-		"""Same action repeated enough times sets stabilized True."""
+	def test_no_solar_before_peak_uses_night(self):
+		"""No solar before peak window uses night logic."""
 		config = _make_config()
 		cs = _make_state()
-		now = datetime.datetime(2025, 7, 15, 17, 0)
-		# run decide twice with the same inputs
-		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, load_power_watts=200,
-			comed_price_cents=15.0, comed_median_cents=8.0,
+		# 3pm, no solar, before peak window
+		now = datetime.datetime(2025, 7, 15, 15, 0)
+		result = decision_engine.decide(
+			battery_soc=60, solar_power_watts=10, load_power_watts=200,
+			comed_price_cents=5.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		result2 = decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, load_power_watts=200,
-			comed_price_cents=15.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		# second call should meet friction_count threshold
-		assert result2.stabilized is True
+		# night logic: normal price -> hold
+		assert result.action == decision_engine.Action.DISCHARGE_DISABLED

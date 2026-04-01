@@ -16,6 +16,8 @@ import requests
 import battcontrol.config
 import battcontrol.state
 import battcontrol.decision_engine
+import battcontrol.command_buffer
+import battcontrol.hourly_logger
 import battcontrol.epcube_client
 import battcontrol.wemo_actuator
 import battcontrol.epcube_login
@@ -368,14 +370,17 @@ _SENSITIVE_KEYS = {"devid", "sgsn", "sn", "token", "userid", "username"}
 #============================================
 def _dump_raw_payload(raw_data: dict, normalized: dict) -> None:
 	"""
-	Log the raw EP Cube API payload and normalized state at INFO level.
+	Write the raw EP Cube API payload and normalized state to JSON files.
 
 	Masks values for keys that look like serial numbers, tokens, or user IDs.
+	Files are written to the current working directory with timestamped names.
 
 	Args:
 		raw_data: Original dict from the API response.
 		normalized: Normalized dict produced by epcube_client.
 	"""
+	# build timestamp string for filenames
+	now_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 	# mask sensitive fields in a copy of the raw data
 	masked_raw = {}
 	for key, value in raw_data.items():
@@ -393,8 +398,16 @@ def _dump_raw_payload(raw_data: dict, normalized: dict) -> None:
 	dev_id = masked_norm.get("device_id", "")
 	if dev_id and len(dev_id) > 4:
 		masked_norm["device_id"] = dev_id[:2] + "***" + dev_id[-2:]
-	logger.info("EP Cube raw payload: %s", json.dumps(masked_raw, indent=2))
-	logger.info("EP Cube normalized state: %s", json.dumps(masked_norm, indent=2))
+	# write raw payload to JSON file (keys sorted alphabetically)
+	raw_path = f"epcube_raw_{now_str}.json"
+	with open(raw_path, "w") as f:
+		json.dump(masked_raw, f, indent=2, sort_keys=True)
+	print(f"Wrote {len(masked_raw)} entries to {raw_path}")
+	# write normalized state to JSON file (keys sorted alphabetically)
+	norm_path = f"epcube_normalized_{now_str}.json"
+	with open(norm_path, "w") as f:
+		json.dump(masked_norm, f, indent=2, sort_keys=True)
+	print(f"Wrote {len(masked_norm)} entries to {norm_path}")
 
 
 #============================================
@@ -447,12 +460,9 @@ def main() -> None:
 	# default comes from config.DEFAULTS which uses tempfile.gettempdir()
 	control_state = battcontrol.state.ControlState(state_path)
 	control_state.load()
-	# reset daily state if needed (midnight rollover)
-	if control_state.peak_mode_entered_at:
-		entered_dt = datetime.datetime.fromisoformat(control_state.peak_mode_entered_at)
-		if entered_dt.date() < now.date():
-			logger.info("New day detected, resetting peak mode state")
-			control_state.reset_daily()
+	# initialize hourly logger for persistent CSV history
+	csv_path = config.get("hourly_csv_path", "data/hourly_history.csv")
+	hourly_logger = battcontrol.hourly_logger.HourlyLogger(csv_path)
 	# fetch ComEd price
 	comed_price, comed_median = _fetch_comed_price()
 	if comed_price is None:
@@ -487,30 +497,42 @@ def main() -> None:
 		control_state=control_state,
 		current_time=now,
 	)
-	logger.info("Decision: %s", result)
-	# execute actuators only when decision has stabilized (friction satisfied)
-	if result.stabilized:
-		# anti-churn: skip EP Cube command if mode and floor are nearly unchanged
-		anti_churn_threshold = config.get("anti_churn_floor_threshold", 2)
-		last_floor = control_state.last_commanded_floor
-		floor_changed = (last_floor is None
-			or abs(result.soc_floor - last_floor) >= anti_churn_threshold)
-		mode_changed = (control_state.last_action != result.action.value)
-		should_send = floor_changed or mode_changed
+	# record cycle data for hourly CSV history
+	hourly_logger.record_cycle(
+		now=now,
+		epcube_data=epcube_data,
+		comed_price=comed_price,
+		comed_median=comed_median,
+		result=result,
+		config=config,
+	)
+	# command buffer: only send EP Cube update when command changes materially
+	desired_mode = result.target_mode
+	desired_reserve = result.soc_floor
+	should_send, buffer_reason = battcontrol.command_buffer.should_send_epcube_update(
+		desired_mode=desired_mode,
+		desired_reserve_soc=desired_reserve,
+		control_state=control_state,
+		config=config,
+		now=now,
+	)
+	if should_send:
+		logger.info("Sending EP Cube update: %s", buffer_reason)
 		# EP Cube actuator
-		if epcube_client is not None and should_send:
+		if epcube_client is not None:
 			battcontrol.epcube_client.execute_epcube(result, epcube_client, config, dry_run)
-			control_state.last_commanded_floor = result.soc_floor
-		elif epcube_client is not None and not should_send:
-			logger.info(
-				"Anti-churn: floor %d%% vs last %s%%, skipping EP Cube command",
-				result.soc_floor, last_floor,
-			)
+		# update command buffer state
+		control_state.last_epcube_mode = desired_mode
+		control_state.last_epcube_reserve_soc = desired_reserve
+		control_state.last_epcube_command_at = now.isoformat()
+		control_state.last_commanded_floor = result.soc_floor
 		# WeMo actuator (skip when no plugs configured)
 		charge_plug = config.get("wemo_charge_plug_name", "")
 		discharge_plug = config.get("wemo_discharge_plug_name", "")
 		if charge_plug or discharge_plug:
 			battcontrol.wemo_actuator.execute_wemo(result.action, config, dry_run)
+	else:
+		logger.info("No EP Cube update: %s", buffer_reason)
 	# save state
 	control_state.save()
 	# print summary line for cron log

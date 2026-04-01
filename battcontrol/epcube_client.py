@@ -169,7 +169,10 @@ class EpcubeClient:
 				battery_soc (int), solar_power_watts (float),
 				grid_power_watts (float), backup_power_watts (float),
 				smart_home_power_watts (float), non_backup_power_watts (float),
-				battery_power_watts (float), work_status (str), device_id (str).
+				battery_power_watts (float), work_status (str), device_id (str),
+				grid_electricity_kwh (float), solar_electricity_kwh (float),
+				smart_home_electricity_kwh (float), backup_electricity_kwh (float),
+				battery_electricity_kwh (float), non_backup_electricity_kwh (float).
 			Returns None if token is expired or request fails.
 		"""
 		endpoint = f"/device/homeDeviceInfo?&sgSn={self.device_sn}"
@@ -197,6 +200,14 @@ class EpcubeClient:
 		battery_power = _safe_float(data.get("batterypower", 0)) * 10
 		battery_soc = _safe_int(data.get("batterysoc", 0))
 		work_status = str(data.get("workstatus", ""))
+		# energy counter fields (cumulative kWh, no * 10 scaling)
+		# None when raw field is missing (0.0 is a valid counter value)
+		grid_electricity = _safe_float(data.get("gridelectricity")) if "gridelectricity" in data else None
+		solar_electricity = _safe_float(data.get("solarelectricity")) if "solarelectricity" in data else None
+		smart_home_electricity = _safe_float(data.get("smarthomeelectricity")) if "smarthomeelectricity" in data else None
+		backup_electricity = _safe_float(data.get("backupelectricity")) if "backupelectricity" in data else None
+		battery_electricity = _safe_float(data.get("batterycurrentelectricity")) if "batterycurrentelectricity" in data else None
+		non_backup_electricity = _safe_float(data.get("nonbackupelectricity")) if "nonbackupelectricity" in data else None
 		normalized = {
 			"battery_soc": battery_soc,
 			"solar_power_watts": solar_power,
@@ -207,6 +218,12 @@ class EpcubeClient:
 			"battery_power_watts": battery_power,
 			"work_status": work_status,
 			"device_id": str(device_id),
+			"grid_electricity_kwh": grid_electricity,
+			"solar_electricity_kwh": solar_electricity,
+			"smart_home_electricity_kwh": smart_home_electricity,
+			"backup_electricity_kwh": backup_electricity,
+			"battery_electricity_kwh": battery_electricity,
+			"non_backup_electricity_kwh": non_backup_electricity,
 		}
 		return normalized
 

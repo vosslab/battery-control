@@ -42,10 +42,10 @@ DEFAULTS = {
 	# headroom band for near-full battery during solar surplus
 	"headroom_band_low": 85,
 	"headroom_band_high": 95,
-	# consecutive checks before switching price bands
-	"hysteresis_count": 2,
-	# stable cycles before sending EP Cube command
-	"token_friction_count": 2,
+	# command buffer: minimum SoC change to trigger EP Cube update
+	"reserve_soc_buffer_pct": 2,
+	# command buffer: optional periodic resend (0 = disabled)
+	"epcube_resend_interval_minutes": 0,
 	# solar fade detection thresholds
 	"solar_sunset_threshold_watts": 50,
 	"solar_sunset_duration_minutes": 20,

@@ -2,6 +2,64 @@
 
 ## 2026-04-01
 
+### Additions and New Features
+
+- Created `daily_summary.py` script (executable) that reads `data/hourly_history.csv`,
+  groups by date, computes daily metrics (grid/solar/load/battery energy totals,
+  actual vs. baseline cost, savings), and writes `data/daily_summary.csv`; includes
+  hindsight optimizer that computes optimal discharge timing with perfect price
+  foresight; handles blank fields (treats as 0), skips hours without price data,
+  and uses SoC deltas as fallback energy estimation
+- Created `replay_strategy.py` script (executable) that reads hourly history, loads
+  config, replays `battcontrol.strategy.evaluate()` for each hour to compare actual
+  vs. replayed policy outcomes; groups results by date with daily cost/savings
+  comparison; outputs CSV or formatted table to stdout; supports alternative configs
+  for strategy comparison (e.g., testing config changes on historical data)
+- Created `tests/test_daily_summary.py` with 9 comprehensive unit tests covering
+  single/multi-day aggregation, cost calculations (actual/baseline/savings),
+  blank field handling, price-data skipping, and missing file error handling
+- Created `tests/test_replay_strategy.py` with 7 unit tests covering replay output
+  generation, config comparison, SoC simulation tracking, blank battery field
+  fallback, cost comparison, and missing file error handling
+- Updated `docs/EPCUBE_API_FIELDS.md` with how-to-dump instructions, added second
+  and third raw payload snapshots, and documented field behavior confirmed by
+  comparing three snapshots: electricity fields are daily kWh counters,
+  `batteryCurrentElectricity` is current stored energy (~12.28 kWh at 61% SoC
+  implies ~20 kWh total capacity), `smartHomePower` = `backUpPower` + `nonBackUpPower`,
+  flow fields duplicate primary power fields
+- Created `battcontrol/command_buffer.py` module with
+  `should_send_epcube_update()` function implementing deadband filter for
+  EP Cube command suppression; sends update only on mode change, reserve
+  SoC change exceeding buffer threshold, resend interval expiry, or first
+  command; returns (should_send: bool, buffer_reason: str) tuple
+- Created `tests/test_command_buffer.py` with 19 comprehensive unit tests:
+  mode change detection, reserve SoC deadband behavior (below/at/above
+  threshold), resend interval logic (disabled/not expired/expired), first
+  commands (empty mode or None reserve), custom config values, and edge
+  cases (zero/max SoC, negative deltas, None timestamps); all tests pass
+- Extended `battcontrol/state.py` `_DEFAULT_STATE` with 3 new fields for
+  command buffering: `last_epcube_mode` (string, default ""),
+  `last_epcube_reserve_soc` (int or None, default None),
+  `last_epcube_command_at` (ISO timestamp string or None, default None)
+- Added electricity counter normalization to `epcube_client.py:get_device_data()`;
+  now returns 6 cumulative kWh fields: `grid_electricity_kwh`, `solar_electricity_kwh`,
+  `smart_home_electricity_kwh`, `backup_electricity_kwh`, `battery_electricity_kwh`,
+  `non_backup_electricity_kwh`; fields are None when missing, 0.0 when present as
+  zero (valid counter state)
+- Added 4 test functions to `test_epcube_client.py`: all 6 fields present,
+  all missing, all zero, and partial mix; validates correct None/float handling
+
+### Behavior or Interface Changes
+
+- Changed `--dump-raw` to write JSON files instead of logging to console:
+  writes `epcube_raw_YYYYMMDD_HHMMSS.json` and
+  `epcube_normalized_YYYYMMDD_HHMMSS.json` to the current directory with
+  alphabetically sorted keys for easier reading
+- All new state fields (`last_epcube_mode`, `last_epcube_reserve_soc`,
+  `last_epcube_command_at`) now persist/restore through `save()`, `load()`,
+  and `to_dict()` via single `_DEFAULT_STATE` source of truth; adding a new
+  state field requires editing only one place
+
 ### Fixes and Maintenance
 
 - Deleted dead `_compute_pacing()` function from `decision_engine.py` (lines
