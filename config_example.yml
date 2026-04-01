@@ -21,19 +21,20 @@ afternoon_target_soc_pct:
 peak_window_start: 16  # 4:00 PM
 peak_window_end: 22    # 10:00 PM
 
-# Price band SoC floors during peak window
+# Price floor anchors for piecewise linear interpolation during peak window
+# Floor is linearly interpolated between anchors; clamped outside range
 # Lower floor = more aggressive discharge at that price level
-price_band_floors:
+price_floor_anchors:
   summer:
-    low:      { max_price_cents: 8,    soc_floor_pct: 50 }
-    mid_low:  { max_price_cents: 10,   soc_floor_pct: 30 }
-    mid_high: { max_price_cents: 20,   soc_floor_pct: 20 }
-    high:     { max_price_cents: 9999, soc_floor_pct: 10 }
+    - { price_cents: 8,  soc_floor_pct: 50 }
+    - { price_cents: 10, soc_floor_pct: 30 }
+    - { price_cents: 20, soc_floor_pct: 20 }
+    - { price_cents: 30, soc_floor_pct: 10 }
   winter:
-    low:      { max_price_cents: 8,    soc_floor_pct: 60 }
-    mid_low:  { max_price_cents: 10,   soc_floor_pct: 45 }
-    mid_high: { max_price_cents: 20,   soc_floor_pct: 30 }
-    high:     { max_price_cents: 9999, soc_floor_pct: 20 }
+    - { price_cents: 8,  soc_floor_pct: 60 }
+    - { price_cents: 10, soc_floor_pct: 45 }
+    - { price_cents: 20, soc_floor_pct: 30 }
+    - { price_cents: 30, soc_floor_pct: 20 }
 
 # Price threshold for extreme-price overrides (cents)
 # Above this, battery discharges even during daytime

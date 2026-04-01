@@ -9,13 +9,14 @@ import datetime
 
 # default state values
 _DEFAULT_STATE = {
-	"price_band_counter": 0,
-	"current_price_band": "",
+	"price_segment_counter": 0,
+	"current_price_segment": -999,
 	"last_action": "",
 	"action_stable_count": 0,
 	"peak_mode_active": False,
 	"peak_mode_entered_at": None,
 	"last_solar_above_threshold_at": None,
+	"last_commanded_floor": None,
 	"token_expired": False,
 	"token_expired_at": None,
 	"token_last_success_at": None,
@@ -41,13 +42,14 @@ class ControlState:
 		if file_path is None:
 			file_path = os.path.join(tempfile.gettempdir(), "battery_control_state.json")
 		self.file_path = file_path
-		self.price_band_counter = 0
-		self.current_price_band = ""
+		self.price_segment_counter = 0
+		self.current_price_segment = -999
 		self.last_action = ""
 		self.action_stable_count = 0
 		self.peak_mode_active = False
 		self.peak_mode_entered_at = None
 		self.last_solar_above_threshold_at = None
+		self.last_commanded_floor = None
 		self.token_expired = False
 		self.token_expired_at = None
 		self.token_last_success_at = None
@@ -61,13 +63,14 @@ class ControlState:
 			return
 		with open(self.file_path, "r") as f:
 			data = json.load(f)
-		self.price_band_counter = data.get("price_band_counter", 0)
-		self.current_price_band = data.get("current_price_band", "")
+		self.price_segment_counter = data.get("price_segment_counter", 0)
+		self.current_price_segment = data.get("current_price_segment", -999)
 		self.last_action = data.get("last_action", "")
 		self.action_stable_count = data.get("action_stable_count", 0)
 		self.peak_mode_active = data.get("peak_mode_active", False)
 		self.peak_mode_entered_at = data.get("peak_mode_entered_at", None)
 		self.last_solar_above_threshold_at = data.get("last_solar_above_threshold_at", None)
+		self.last_commanded_floor = data.get("last_commanded_floor", None)
 		self.token_expired = data.get("token_expired", False)
 		self.token_expired_at = data.get("token_expired_at", None)
 		self.token_last_success_at = data.get("token_last_success_at", None)
@@ -78,13 +81,14 @@ class ControlState:
 		Save state to JSON file atomically (write to tmp, rename).
 		"""
 		data = {
-			"price_band_counter": self.price_band_counter,
-			"current_price_band": self.current_price_band,
+			"price_segment_counter": self.price_segment_counter,
+			"current_price_segment": self.current_price_segment,
 			"last_action": self.last_action,
 			"action_stable_count": self.action_stable_count,
 			"peak_mode_active": self.peak_mode_active,
 			"peak_mode_entered_at": self.peak_mode_entered_at,
 			"last_solar_above_threshold_at": self.last_solar_above_threshold_at,
+			"last_commanded_floor": self.last_commanded_floor,
 			"token_expired": self.token_expired,
 			"token_expired_at": self.token_expired_at,
 			"token_last_success_at": self.token_last_success_at,
@@ -103,22 +107,22 @@ class ControlState:
 		self.peak_mode_entered_at = None
 
 	#============================================
-	def update_price_band(self, new_band: str) -> bool:
+	def update_price_segment(self, new_segment: int) -> bool:
 		"""
-		Update price band tracking with hysteresis.
+		Update price segment tracking with hysteresis.
 
 		Args:
-			new_band: The newly detected price band name.
+			new_segment: The segment index from get_price_segment_index().
 
 		Returns:
-			bool: True if band has changed (counter reset), False if same band.
+			bool: True if segment changed (counter reset), False if same.
 		"""
-		if new_band == self.current_price_band:
-			self.price_band_counter += 1
+		if new_segment == self.current_price_segment:
+			self.price_segment_counter += 1
 			return False
-		# band changed, reset counter
-		self.current_price_band = new_band
-		self.price_band_counter = 1
+		# segment changed, reset counter
+		self.current_price_segment = new_segment
+		self.price_segment_counter = 1
 		return True
 
 	#============================================
@@ -161,13 +165,14 @@ class ControlState:
 			dict: Current state values.
 		"""
 		return {
-			"price_band_counter": self.price_band_counter,
-			"current_price_band": self.current_price_band,
+			"price_segment_counter": self.price_segment_counter,
+			"current_price_segment": self.current_price_segment,
 			"last_action": self.last_action,
 			"action_stable_count": self.action_stable_count,
 			"peak_mode_active": self.peak_mode_active,
 			"peak_mode_entered_at": self.peak_mode_entered_at,
 			"last_solar_above_threshold_at": self.last_solar_above_threshold_at,
+			"last_commanded_floor": self.last_commanded_floor,
 			"token_expired": self.token_expired,
 			"token_expired_at": self.token_expired_at,
 			"token_last_success_at": self.token_last_success_at,

@@ -43,7 +43,7 @@ class DecisionResult:
 		action: Controller policy action.
 		reason: Human-readable explanation.
 		soc_floor: Reserve SoC percentage for this decision.
-		price_band: Current price band name (if applicable).
+		price_segment: Segment index from interpolation anchors (-1 = sentinel).
 		target_mode: EP Cube mode ('self_consumption' or 'backup').
 	"""
 
@@ -53,7 +53,7 @@ class DecisionResult:
 		action: Action,
 		reason: str,
 		soc_floor: int = 0,
-		price_band: str = "",
+		price_segment: int = -1,
 		target_mode: str = "",
 	):
 		"""
@@ -63,13 +63,13 @@ class DecisionResult:
 			action: Controller policy action.
 			reason: Human-readable explanation.
 			soc_floor: Reserve SoC percentage.
-			price_band: Current price band name.
+			price_segment: Segment index from get_price_segment_index().
 			target_mode: EP Cube mode name.
 		"""
 		self.action = action
 		self.reason = reason
 		self.soc_floor = soc_floor
-		self.price_band = price_band
+		self.price_segment = price_segment
 		self.target_mode = target_mode
 
 	#============================================
@@ -293,7 +293,7 @@ def _daylight_logic(
 			action=Action.DISCHARGE_ENABLED,
 			reason=f"No surplus, extreme price {comed_price_cents:.1f}c >= {extreme_threshold}c",
 			soc_floor=extreme_floor,
-			price_band="extreme",
+			price_segment=-1,
 			target_mode="self_consumption",
 		)
 	# B.3b: preserve for evening
@@ -342,7 +342,7 @@ def _night_logic(
 			action=Action.DISCHARGE_ENABLED,
 			reason=f"Night extreme price {comed_price_cents:.1f}c, discharging to floor {night_floor}%",
 			soc_floor=night_floor,
-			price_band="extreme",
+			price_segment=-1,
 			target_mode="self_consumption",
 		)
 	# otherwise hold
@@ -385,12 +385,16 @@ def _peak_logic(
 	if not control_state.peak_mode_active:
 		control_state.peak_mode_active = True
 		control_state.peak_mode_entered_at = current_time.isoformat()
-	# E.2: select SoC floor from price band
-	soc_floor = config_mod.get_price_band_floor(config, season, comed_price_cents)
-	price_band = config_mod.get_price_band_name(config, season, comed_price_cents)
+	# E.2: interpolate SoC floor from price anchors
+	soc_floor = config_mod.get_price_floor(config, season, comed_price_cents)
+	segment_idx = config_mod.get_price_segment_index(config, season, comed_price_cents)
+	bounds = config_mod.get_price_segment_bounds(config, season, comed_price_cents)
+	# format segment bounds for logging
+	lo_str = f"{bounds[0]:.1f}" if bounds[0] is not None else "<min"
+	hi_str = f"{bounds[1]:.1f}" if bounds[1] is not None else ">max"
 	logger.info(
-		"Peak: price %.1fc -> band '%s', floor %d%%",
-		comed_price_cents, price_band, soc_floor,
+		"Peak: price %.1fc in [%s, %s]c -> floor %d%%",
+		comed_price_cents, lo_str, hi_str, soc_floor,
 	)
 	# E.3: compute pacing guideline (used for logging, not rate control)
 	_compute_pacing(battery_soc, soc_floor, current_time, config)
@@ -403,9 +407,9 @@ def _peak_logic(
 		)
 		return DecisionResult(
 			action=Action.DISCHARGE_DISABLED,
-			reason=f"Peak: SoC {battery_soc}% <= floor {soc_floor}% ({price_band})",
+			reason=f"Peak: SoC {battery_soc}% <= floor {soc_floor}% (price {comed_price_cents:.1f}c)",
 			soc_floor=soc_floor,
-			price_band=price_band,
+			price_segment=segment_idx,
 			target_mode="backup",
 		)
 	# above floor: discharge enabled
@@ -415,17 +419,17 @@ def _peak_logic(
 	capacity = config.get("battery_capacity_kwh", 20.0)
 	usable_kwh = capacity * usable_pct / 100.0
 	logger.info(
-		"Discharge enabled: price %.1fc in '%s' band, "
+		"Discharge enabled: price %.1fc, "
 		"SoC %d%% above %d%% floor, %.1f kWh usable over %d hrs",
-		comed_price_cents, price_band,
+		comed_price_cents,
 		battery_soc, soc_floor, usable_kwh, remaining_hours,
 	)
 	return DecisionResult(
 		action=Action.DISCHARGE_ENABLED,
-		reason=(f"Peak {price_band}: SoC {battery_soc}% above "
-			f"{soc_floor}% floor, discharge enabled"),
+		reason=(f"Peak: SoC {battery_soc}% above "
+			f"{soc_floor}% floor, discharge enabled (price {comed_price_cents:.1f}c)"),
 		soc_floor=soc_floor,
-		price_band=price_band,
+		price_segment=segment_idx,
 		target_mode="self_consumption",
 	)
 
@@ -551,19 +555,19 @@ def _apply_hysteresis(
 	"""
 	hysteresis_count = config.get("hysteresis_count", 2)
 	friction_count = config.get("token_friction_count", 2)
-	# track price band changes
-	if result.price_band:
-		band_changed = control_state.update_price_band(result.price_band)
-		if band_changed:
+	# track price segment changes
+	if result.price_segment >= 0:
+		segment_changed = control_state.update_price_segment(result.price_segment)
+		if segment_changed:
 			logger.info(
-				"Band changed to '%s' (%d/%d checks needed)",
-				result.price_band, control_state.price_band_counter, hysteresis_count,
+				"Segment changed to %d (%d/%d checks needed)",
+				result.price_segment, control_state.price_segment_counter, hysteresis_count,
 			)
-		# if band just changed and not enough consecutive checks, hold previous
-		elif control_state.price_band_counter < hysteresis_count:
+		# if segment just changed and not enough consecutive checks, log it
+		elif control_state.price_segment_counter < hysteresis_count:
 			logger.debug(
-				"Hysteresis: band %s has %d/%d consecutive checks",
-				result.price_band, control_state.price_band_counter, hysteresis_count
+				"Hysteresis: segment %d has %d/%d consecutive checks",
+				result.price_segment, control_state.price_segment_counter, hysteresis_count
 			)
 	# track action stability for token friction
 	control_state.update_action(result.action.value)

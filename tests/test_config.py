@@ -118,45 +118,123 @@ class TestGetSeason:
 
 
 #============================================
-class TestPriceBands:
-	"""Tests for price band functions."""
+class TestPriceFloor:
+	"""Tests for piecewise linear interpolation floor functions."""
 
 	#============================================
-	def test_summer_low_band(self):
-		"""Price below 8c in summer gives 50% floor."""
+	def test_summer_below_first_anchor(self):
+		"""Price below first anchor clamps to first floor."""
 		config = config_mod.DEFAULTS
-		floor = config_mod.get_price_band_floor(config, "summer", 5.0)
+		floor = config_mod.get_price_floor(config, "summer", 5.0)
 		assert floor == 50
 
 	#============================================
-	def test_summer_high_band(self):
-		"""Price above 20c in summer gives 10% floor."""
+	def test_summer_at_first_anchor(self):
+		"""Price at first anchor returns first floor exactly."""
 		config = config_mod.DEFAULTS
-		floor = config_mod.get_price_band_floor(config, "summer", 25.0)
+		floor = config_mod.get_price_floor(config, "summer", 8.0)
+		assert floor == 50
+
+	#============================================
+	def test_summer_midpoint_interpolation(self):
+		"""Price midway between 8c and 10c interpolates to 40%."""
+		config = config_mod.DEFAULTS
+		# 9c is halfway between 8c (50%) and 10c (30%)
+		floor = config_mod.get_price_floor(config, "summer", 9.0)
+		assert floor == 40
+
+	#============================================
+	def test_summer_between_anchors(self):
+		"""Price between 10c and 20c interpolates correctly."""
+		config = config_mod.DEFAULTS
+		# 15c is halfway between 10c (30%) and 20c (20%) -> 25%
+		floor = config_mod.get_price_floor(config, "summer", 15.0)
+		assert floor == 25
+
+	#============================================
+	def test_summer_above_last_anchor(self):
+		"""Price above last anchor clamps to last floor."""
+		config = config_mod.DEFAULTS
+		floor = config_mod.get_price_floor(config, "summer", 35.0)
 		assert floor == 10
 
 	#============================================
-	def test_winter_low_band(self):
-		"""Price below 8c in winter gives 60% floor."""
+	def test_winter_below_first_anchor(self):
+		"""Winter price below first anchor clamps to first floor."""
 		config = config_mod.DEFAULTS
-		floor = config_mod.get_price_band_floor(config, "winter", 5.0)
+		floor = config_mod.get_price_floor(config, "winter", 5.0)
 		assert floor == 60
 
 	#============================================
-	def test_winter_high_band(self):
-		"""Price above 20c in winter gives 20% floor."""
+	def test_winter_above_last_anchor(self):
+		"""Winter price above last anchor clamps to last floor."""
 		config = config_mod.DEFAULTS
-		floor = config_mod.get_price_band_floor(config, "winter", 25.0)
+		floor = config_mod.get_price_floor(config, "winter", 35.0)
 		assert floor == 20
 
 	#============================================
-	def test_band_name_boundaries(self):
-		"""Band names match at boundary values."""
+	def test_segment_index_below(self):
+		"""Segment index is -1 for price below first anchor."""
 		config = config_mod.DEFAULTS
-		assert config_mod.get_price_band_name(config, "summer", 5.0) == "low"
-		assert config_mod.get_price_band_name(config, "summer", 9.0) == "mid_low"
-		assert config_mod.get_price_band_name(config, "summer", 15.0) == "mid_high"
-		assert config_mod.get_price_band_name(config, "summer", 25.0) == "high"
+		idx = config_mod.get_price_segment_index(config, "summer", 5.0)
+		assert idx == -1
+
+	#============================================
+	def test_segment_index_between(self):
+		"""Segment index is 0 for price between first two anchors."""
+		config = config_mod.DEFAULTS
+		idx = config_mod.get_price_segment_index(config, "summer", 9.0)
+		assert idx == 0
+
+	#============================================
+	def test_segment_index_above(self):
+		"""Segment index is N-1 for price above last anchor."""
+		config = config_mod.DEFAULTS
+		# 4 anchors, above last -> index 3
+		idx = config_mod.get_price_segment_index(config, "summer", 35.0)
+		assert idx == 3
+
+	#============================================
+	def test_segment_bounds_below(self):
+		"""Segment bounds for below range."""
+		config = config_mod.DEFAULTS
+		bounds = config_mod.get_price_segment_bounds(config, "summer", 5.0)
+		assert bounds == (None, 8)
+
+	#============================================
+	def test_segment_bounds_between(self):
+		"""Segment bounds for price between anchors."""
+		config = config_mod.DEFAULTS
+		bounds = config_mod.get_price_segment_bounds(config, "summer", 9.0)
+		assert bounds == (8, 10)
+
+	#============================================
+	def test_segment_bounds_above(self):
+		"""Segment bounds for above range."""
+		config = config_mod.DEFAULTS
+		bounds = config_mod.get_price_segment_bounds(config, "summer", 35.0)
+		assert bounds == (30, None)
+
+	#============================================
+	def test_validate_anchors_too_few(self):
+		"""validate_anchors raises on fewer than 2 anchors."""
+		import pytest
+		config_mod.validate_anchors([
+			{"price_cents": 8, "soc_floor_pct": 50},
+			{"price_cents": 10, "soc_floor_pct": 30},
+		])
+		with pytest.raises(ValueError):
+			config_mod.validate_anchors([{"price_cents": 8, "soc_floor_pct": 50}])
+
+	#============================================
+	def test_validate_anchors_non_increasing(self):
+		"""validate_anchors raises on non-increasing prices."""
+		import pytest
+		with pytest.raises(ValueError):
+			config_mod.validate_anchors([
+				{"price_cents": 10, "soc_floor_pct": 30},
+				{"price_cents": 8, "soc_floor_pct": 50},
+			])
 
 	#============================================
 	def test_seasonal_value(self):

@@ -1,6 +1,6 @@
 I have an epcube battery backup, solar panels, and IL comed hourly pricing. no code, but I need a conceptual strategy on when to discharge on the battery backup, we have to take into account pricing the higher the electricity price the lower SoC that is accept. I am not allowed to charge from the grid, so I can only charge using solar power.
 
-on "treats your battery like a scarce resource", we can make up to 50kWh of solar on a summer day, and the battery is only 18kWh. It is 11:30am on March 1 and we have make 12kWh solar. 
+on "treats your battery like a scarce resource", we can make up to 50kWh of solar on a summer day, and the battery is only 18kWh. It is 11:30am on March 1 and we have make 12kWh solar.
 
 yes, but if we make 50kWh on a solar day in a mid day blob when prices are cheap, we want to use that excess during 5pm when people get home and electricity prices jump. this is a daily cycle not a scarce resource cycle.
 
@@ -8,7 +8,7 @@ I am thinking like if prices are 5c then allow down to 50%, 8c then 30%, over 10
 
 winter and summer two different strategies, summer is predictable, winter is chaotic
 
-I want to program to start it and forget it, it does not have to be daemon itself, I have daemons that run scripts every 3 minutes. We could pull in weather data, but I worry that pulling weather data can be unreliable. 
+I want to program to start it and forget it, it does not have to be daemon itself, I have daemons that run scripts every 3 minutes. We could pull in weather data, but I worry that pulling weather data can be unreliable.
 
 what setting would I use to send all solar to the battery to charge and pull energy from the grid to satisfy house demand
 

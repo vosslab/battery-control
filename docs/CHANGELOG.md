@@ -4,6 +4,34 @@
 
 ### Additions and New Features
 
+- Replaced hard price band step function with piecewise linear interpolation
+  using `numpy.interp()` for SoC floor calculation; anchor points in
+  `config.yml` define the curve, floor changes smoothly between them instead
+  of jumping at band boundaries (e.g., 9c summer now gives 40% instead of
+  jumping from 50% to 30% at 8c)
+- Added `validate_anchors()` to enforce >= 2 anchors with strictly increasing
+  prices; anchors are defensively sorted before use
+- Added `get_price_segment_index()` and `get_price_segment_bounds()` for
+  hysteresis tracking and log display using segment indices instead of
+  named bands
+- Added anti-churn logic to `battery_controller.py`: EP Cube reserve command
+  is skipped when mode is unchanged and floor delta is < 2%, preventing
+  rapid small updates from smooth interpolation
+- Added `last_commanded_floor` field to `ControlState` for anti-churn tracking
+
+### Behavior or Interface Changes
+
+- Renamed config key `price_band_floors` to `price_floor_anchors`; format
+  changed from named bands with `max_price_cents` to ordered anchor lists
+  with `price_cents` and `soc_floor_pct`
+- Renamed `get_price_band_floor()` to `get_price_floor()` in `config.py`
+- Removed `get_price_band_name()` entirely; band names no longer exist
+- Renamed `DecisionResult.price_band` (str) to `price_segment` (int)
+- Renamed state fields: `current_price_band` to `current_price_segment`,
+  `price_band_counter` to `price_segment_counter`,
+  `update_price_band()` to `update_price_segment()`
+- Updated `docs/STRATEGY.md` to describe interpolation with anchor tables
+
 - Added file logging to `battery_controller.log` in CWD (append mode, always
   INFO level); terminal verbosity is still controlled by `-v` flags
 - Switched decision engine price input from `getCurrentComedRate()` to
@@ -40,6 +68,16 @@
 - Added decision-path logging to `battcontrol/decision_engine.py` so verbose mode
   (`-v`) shows a reasoning trace: inputs, which logic block was chosen, and why the
   final action won; logs are tied to returns so they stay aligned with actual behavior
+
+### Fixes and Maintenance
+
+- Fixed duplicate log lines in daemon mode: `_setup_logging()` was adding new
+  handlers to the root logger on every cycle without clearing old ones, causing
+  cycle N to print every line N times; now clears and closes existing handlers
+  before rebuilding
+- Changed console log format to shorter `%(levelname)-7s %(module)s: %(message)s`
+  dropping timestamps (redundant with cycle headers) and `battcontrol.` prefix;
+  file log retains full timestamps and dotted module paths
 
 ### Behavior or Interface Changes
 

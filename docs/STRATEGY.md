@@ -77,7 +77,7 @@ The controller uses three policy actions. Each determines intent, EP Cube mode, 
 | Policy action | Intent | EP Cube mode | WeMo | Reserve SoC rule |
 | --- | --- | --- | --- | --- |
 | `CHARGE_FROM_SOLAR` | Fill battery from PV | Self-consumption | both off | target SoC (100% summer, 70% winter) |
-| `DISCHARGE_ENABLED` | Battery serves load | Self-consumption | discharge on | floor from price band |
+| `DISCHARGE_ENABLED` | Battery serves load | Self-consumption | discharge on | floor from interpolated price anchors |
 | `DISCHARGE_DISABLED` | Block discharge | Backup | both off | max(current SoC, configured hold floor) |
 
 ### Seasonal intent
@@ -136,19 +136,31 @@ Goal: spend battery when prices are high, but preserve energy so you do not run 
 1. Determine Season Mode
   - Summer mode: May to September or when daily solar is consistently strong.
   - Winter mode: October to April or when daily solar is inconsistent.
-2. Select SoC Floor from price bands (season adjusted)
+2. Interpolate SoC floor from price anchors (season adjusted)
 
-Example summer floors (peak window):
-  - price < 8c: floor 50%
-  - 8c to 10c: floor 30%
-  - 10c to 20c: floor 20%
-  - >= 20c: floor 10%
+The floor is computed by piecewise linear interpolation between anchor points.
+Prices below the first anchor clamp to its floor; prices above the last anchor
+clamp to its floor. Between anchors the floor changes smoothly.
 
-Example winter floors (peak window, more conservative):
-  - price < 8c: floor 60%
-  - 8c to 10c: floor 45%
-  - 10c to 20c: floor 30%
-  - >= 20c: floor 20% (optionally 15% if you accept more risk)
+Summer anchors (peak window):
+
+| Price (cents) | SoC floor |
+| --- | --- |
+| 8 | 50% |
+| 10 | 30% |
+| 20 | 20% |
+| 30 | 10% |
+
+Winter anchors (peak window, more conservative):
+
+| Price (cents) | SoC floor |
+| --- | --- |
+| 8 | 60% |
+| 10 | 45% |
+| 20 | 30% |
+| 30 | 20% |
+
+Example: summer price 9c is midway between 8c and 10c, so floor = 40%.
 
 3. Apply pacing heuristic (prevents early depletion)
 Compute "Usable Energy" = battery energy above the selected floor.

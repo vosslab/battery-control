@@ -7,6 +7,7 @@ import datetime
 
 # PIP3 modules
 import yaml
+import numpy
 
 
 # default configuration values from STRATEGY.md
@@ -19,20 +20,20 @@ DEFAULTS = {
 	# peak arbitrage window hours (24h format)
 	"peak_window_start": 16,
 	"peak_window_end": 22,
-	# seasonal price band SoC floors during peak window
-	"price_band_floors": {
-		"summer": {
-			"low": {"max_price_cents": 8, "soc_floor_pct": 50},
-			"mid_low": {"max_price_cents": 10, "soc_floor_pct": 30},
-			"mid_high": {"max_price_cents": 20, "soc_floor_pct": 20},
-			"high": {"max_price_cents": 9999, "soc_floor_pct": 10},
-		},
-		"winter": {
-			"low": {"max_price_cents": 8, "soc_floor_pct": 60},
-			"mid_low": {"max_price_cents": 10, "soc_floor_pct": 45},
-			"mid_high": {"max_price_cents": 20, "soc_floor_pct": 30},
-			"high": {"max_price_cents": 9999, "soc_floor_pct": 20},
-		},
+	# price floor anchors for piecewise linear interpolation during peak window
+	"price_floor_anchors": {
+		"summer": [
+			{"price_cents": 8, "soc_floor_pct": 50},
+			{"price_cents": 10, "soc_floor_pct": 30},
+			{"price_cents": 20, "soc_floor_pct": 20},
+			{"price_cents": 30, "soc_floor_pct": 10},
+		],
+		"winter": [
+			{"price_cents": 8, "soc_floor_pct": 60},
+			{"price_cents": 10, "soc_floor_pct": 45},
+			{"price_cents": 20, "soc_floor_pct": 30},
+			{"price_cents": 30, "soc_floor_pct": 20},
+		],
 	},
 	# extreme price threshold for daytime discharge override
 	"extreme_price_threshold": 20,
@@ -184,35 +185,55 @@ def get_seasonal_value(config: dict, key: str, season: str) -> int:
 
 
 #============================================
-def get_price_band_floor(config: dict, season: str, price_cents: float) -> int:
+def validate_anchors(anchors: list) -> None:
 	"""
-	Determine the SoC floor for the current price band.
+	Validate price floor anchor list.
 
 	Args:
-		config: Configuration dictionary.
-		season: 'summer' or 'winter'.
-		price_cents: Current price in cents.
+		anchors: List of anchor dicts with price_cents and soc_floor_pct.
 
-	Returns:
-		int: SoC floor percentage for the matching price band.
+	Raises:
+		ValueError: If anchors are invalid.
 	"""
-	bands = config.get("price_band_floors", {}).get(season, {})
-	# iterate bands in order: low, mid_low, mid_high, high
-	band_order = ["low", "mid_low", "mid_high", "high"]
-	for band_name in band_order:
-		band = bands.get(band_name, {})
-		max_price = band.get("max_price_cents", 9999)
-		if price_cents < max_price:
-			return band.get("soc_floor_pct", 50)
-	# fallback: return the highest band floor
-	last_band = bands.get("high", {})
-	return last_band.get("soc_floor_pct", 10)
+	if len(anchors) < 2:
+		raise ValueError(f"Need at least 2 anchors, got {len(anchors)}")
+	prices = [a["price_cents"] for a in anchors]
+	for i in range(len(prices) - 1):
+		if prices[i] >= prices[i + 1]:
+			raise ValueError(
+				f"Anchor prices must be strictly increasing: "
+				f"{prices[i]} >= {prices[i + 1]} at index {i}"
+			)
 
 
 #============================================
-def get_price_band_name(config: dict, season: str, price_cents: float) -> str:
+def _get_sorted_anchors(config: dict, season: str) -> list:
 	"""
-	Determine the price band name for the current price.
+	Extract and sort anchors for a season, with validation.
+
+	Args:
+		config: Configuration dictionary.
+		season: 'summer' or 'winter'.
+
+	Returns:
+		list: Sorted list of anchor dicts.
+	"""
+	anchors = config.get("price_floor_anchors", {}).get(season, [])
+	if not anchors:
+		return []
+	# defensive sort by price
+	anchors = sorted(anchors, key=lambda a: a["price_cents"])
+	validate_anchors(anchors)
+	return anchors
+
+
+#============================================
+def get_price_floor(config: dict, season: str, price_cents: float) -> int:
+	"""
+	Determine the SoC floor using piecewise linear interpolation.
+
+	Uses numpy.interp to interpolate between anchor points.
+	Clamps to first/last anchor floor outside the anchor range.
 
 	Args:
 		config: Configuration dictionary.
@@ -220,13 +241,72 @@ def get_price_band_name(config: dict, season: str, price_cents: float) -> str:
 		price_cents: Current price in cents.
 
 	Returns:
-		str: Band name ('low', 'mid_low', 'mid_high', or 'high').
+		int: Interpolated SoC floor percentage, rounded to nearest 1%.
 	"""
-	bands = config.get("price_band_floors", {}).get(season, {})
-	band_order = ["low", "mid_low", "mid_high", "high"]
-	for band_name in band_order:
-		band = bands.get(band_name, {})
-		max_price = band.get("max_price_cents", 9999)
-		if price_cents < max_price:
-			return band_name
-	return "high"
+	anchors = _get_sorted_anchors(config, season)
+	if not anchors:
+		return 50
+	prices = numpy.array([a["price_cents"] for a in anchors])
+	floors = numpy.array([a["soc_floor_pct"] for a in anchors])
+	# numpy.interp clamps outside the range by default
+	floor_val = numpy.interp(price_cents, prices, floors)
+	return round(float(floor_val))
+
+
+#============================================
+def get_price_segment_index(config: dict, season: str, price_cents: float) -> int:
+	"""
+	Return the segment index for the current price.
+
+	Segments are numbered by which pair of anchors brackets the price:
+	  -1 = below first anchor (clamped region)
+	  0..N-2 = between anchor pairs
+	  N-1 = above last anchor (clamped region)
+
+	Args:
+		config: Configuration dictionary.
+		season: 'summer' or 'winter'.
+		price_cents: Current price in cents.
+
+	Returns:
+		int: Segment index.
+	"""
+	anchors = _get_sorted_anchors(config, season)
+	if not anchors:
+		return -1
+	prices = numpy.array([a["price_cents"] for a in anchors])
+	# searchsorted returns insertion point
+	idx = int(numpy.searchsorted(prices, price_cents))
+	if idx == 0:
+		return -1
+	if idx >= len(prices):
+		return len(prices) - 1
+	# between anchors idx-1 and idx, segment index is idx-1
+	return idx - 1
+
+
+#============================================
+def get_price_segment_bounds(
+	config: dict, season: str, price_cents: float
+) -> tuple:
+	"""
+	Return the bounding anchor prices for the current segment.
+
+	Args:
+		config: Configuration dictionary.
+		season: 'summer' or 'winter'.
+		price_cents: Current price in cents.
+
+	Returns:
+		tuple: (lower_price, upper_price). None for unbounded ends.
+	"""
+	anchors = _get_sorted_anchors(config, season)
+	if not anchors:
+		return (None, None)
+	prices = [a["price_cents"] for a in anchors]
+	idx = int(numpy.searchsorted(prices, price_cents))
+	if idx == 0:
+		return (None, prices[0])
+	if idx >= len(prices):
+		return (prices[-1], None)
+	return (prices[idx - 1], prices[idx])

@@ -78,22 +78,27 @@ def _setup_logging(verbose: int) -> None:
 		console_level = logging.INFO
 	else:
 		console_level = logging.WARNING
-	log_format = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
-	date_format = "%Y-%m-%d %H:%M:%S"
 	# set root logger to the most permissive level needed
 	file_level = logging.INFO
 	root_level = min(console_level, file_level)
 	root_logger = logging.getLogger()
+	# clear existing handlers to avoid accumulation when called repeatedly
+	for handler in list(root_logger.handlers):
+		root_logger.removeHandler(handler)
+		handler.close()
 	root_logger.setLevel(root_level)
-	# console handler
+	# console handler (short format for scannability)
+	console_format = "  %(levelname)-7s %(module)s: %(message)s"
 	console_handler = logging.StreamHandler()
 	console_handler.setLevel(console_level)
-	console_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+	console_handler.setFormatter(logging.Formatter(console_format))
 	root_logger.addHandler(console_handler)
-	# file handler (always INFO, append mode)
+	# file handler (full format with timestamps, always INFO, append mode)
+	file_format = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
+	file_date_format = "%Y-%m-%d %H:%M:%S"
 	file_handler = logging.FileHandler("battery_controller.log", mode="a")
 	file_handler.setLevel(file_level)
-	file_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+	file_handler.setFormatter(logging.Formatter(file_format, datefmt=file_date_format))
 	root_logger.addHandler(file_handler)
 
 
@@ -428,9 +433,20 @@ def main() -> None:
 	action_stable = control_state.action_stable_count >= friction_count
 	# execute actuators
 	if action_stable:
+		# anti-churn: skip EP Cube command if mode and floor are nearly unchanged
+		last_floor = control_state.last_commanded_floor
+		floor_changed = (last_floor is None or abs(result.soc_floor - last_floor) >= 2)
+		mode_changed = (control_state.last_action != result.action.value)
+		should_send = floor_changed or mode_changed
 		# EP Cube actuator
-		if epcube_client is not None:
+		if epcube_client is not None and should_send:
 			epcube_mod.execute_epcube(result, epcube_client, config, dry_run)
+			control_state.last_commanded_floor = result.soc_floor
+		elif epcube_client is not None and not should_send:
+			logger.info(
+				"Anti-churn: floor %d%% vs last %s%%, skipping EP Cube command",
+				result.soc_floor, last_floor,
+			)
 		# WeMo actuator (skip when no plugs configured)
 		charge_plug = config.get("wemo_charge_plug_name", "")
 		discharge_plug = config.get("wemo_discharge_plug_name", "")

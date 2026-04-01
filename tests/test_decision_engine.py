@@ -199,8 +199,7 @@ class TestPeakLogic:
 			config=config, control_state=cs, current_time=now,
 		)
 		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
-		assert result.price_band == "high"
-		assert result.soc_floor == 10  # summer high band floor
+		assert result.soc_floor == 15  # summer 25c interpolated between 20c(20%) and 30c(10%)
 
 	#============================================
 	def test_peak_low_price_hold(self):
@@ -228,7 +227,8 @@ class TestPeakLogic:
 			config=config, control_state=cs, current_time=now,
 		)
 		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
-		assert result.price_band == "mid_high"
+		# 15c summer: interpolated between 10c(30%) and 20c(20%) = 25%
+		assert result.soc_floor == 25
 
 	#============================================
 	def test_peak_winter_higher_floors(self):
@@ -242,7 +242,7 @@ class TestPeakLogic:
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.soc_floor == 30  # winter mid_high floor
+		assert result.soc_floor == 38  # winter 15c interpolated between 10c(45%) and 20c(30%)
 
 	#============================================
 	def test_peak_mode_activation(self):
@@ -264,7 +264,7 @@ class TestHysteresis:
 	"""Tests for section F: hysteresis and token friction."""
 
 	#============================================
-	def test_price_band_counter_increments(self):
+	def test_price_segment_counter_increments(self):
 		"""Consecutive same-band checks increment counter."""
 		config = _make_config()
 		cs = _make_state()
@@ -275,14 +275,14 @@ class TestHysteresis:
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		first_count = cs.price_band_counter
+		first_count = cs.price_segment_counter
 		# second check, same price
 		decision_engine.decide(
 			battery_soc=80, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert cs.price_band_counter == first_count + 1
+		assert cs.price_segment_counter == first_count + 1
 
 	#============================================
 	def test_action_stability_tracking(self):

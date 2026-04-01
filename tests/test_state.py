@@ -23,8 +23,8 @@ class TestControlState:
 		"""Load from missing file returns defaults."""
 		cs = state_mod.ControlState("/nonexistent/state.json")
 		cs.load()
-		assert cs.price_band_counter == 0
-		assert cs.current_price_band == ""
+		assert cs.price_segment_counter == 0
+		assert cs.current_price_segment == -999
 		assert cs.last_action == ""
 		assert cs.peak_mode_active is False
 		assert cs.token_expired is False
@@ -35,8 +35,8 @@ class TestControlState:
 		state_file = str(tmp_path / "state.json")
 		# save state
 		cs = state_mod.ControlState(state_file)
-		cs.price_band_counter = 3
-		cs.current_price_band = "mid_high"
+		cs.price_segment_counter = 3
+		cs.current_price_segment = 2
 		cs.last_action = "allow_discharge"
 		cs.action_stable_count = 2
 		cs.peak_mode_active = True
@@ -47,8 +47,8 @@ class TestControlState:
 		# load into new instance
 		cs2 = state_mod.ControlState(state_file)
 		cs2.load()
-		assert cs2.price_band_counter == 3
-		assert cs2.current_price_band == "mid_high"
+		assert cs2.price_segment_counter == 3
+		assert cs2.current_price_segment == 2
 		assert cs2.last_action == "allow_discharge"
 		assert cs2.action_stable_count == 2
 		assert cs2.peak_mode_active is True
@@ -59,14 +59,14 @@ class TestControlState:
 		"""Save is atomic (uses tmp + rename)."""
 		state_file = str(tmp_path / "state.json")
 		cs = state_mod.ControlState(state_file)
-		cs.price_band_counter = 1
+		cs.price_segment_counter = 1
 		cs.save()
 		# tmp file should not exist after save
 		assert not os.path.isfile(state_file + ".tmp")
 		# state file should be valid JSON
 		with open(state_file, "r") as f:
 			data = json.load(f)
-		assert data["price_band_counter"] == 1
+		assert data["price_segment_counter"] == 1
 
 	#============================================
 	def test_reset_daily(self):
@@ -79,25 +79,25 @@ class TestControlState:
 		assert cs.peak_mode_entered_at is None
 
 	#============================================
-	def test_update_price_band_same(self):
-		"""Same band increments counter, returns False."""
+	def test_update_price_segment_same(self):
+		"""Same segment increments counter, returns False."""
 		cs = state_mod.ControlState()
-		cs.current_price_band = "low"
-		cs.price_band_counter = 1
-		changed = cs.update_price_band("low")
+		cs.current_price_segment = 1
+		cs.price_segment_counter = 1
+		changed = cs.update_price_segment(1)
 		assert changed is False
-		assert cs.price_band_counter == 2
+		assert cs.price_segment_counter == 2
 
 	#============================================
-	def test_update_price_band_change(self):
-		"""Different band resets counter, returns True."""
+	def test_update_price_segment_change(self):
+		"""Different segment resets counter, returns True."""
 		cs = state_mod.ControlState()
-		cs.current_price_band = "low"
-		cs.price_band_counter = 3
-		changed = cs.update_price_band("mid_high")
+		cs.current_price_segment = 0
+		cs.price_segment_counter = 3
+		changed = cs.update_price_segment(2)
 		assert changed is True
-		assert cs.price_band_counter == 1
-		assert cs.current_price_band == "mid_high"
+		assert cs.price_segment_counter == 1
+		assert cs.current_price_segment == 2
 
 	#============================================
 	def test_update_action_same(self):
@@ -141,9 +141,9 @@ class TestControlState:
 	def test_to_dict(self):
 		"""to_dict returns all state fields."""
 		cs = state_mod.ControlState()
-		cs.price_band_counter = 2
-		cs.current_price_band = "high"
+		cs.price_segment_counter = 2
+		cs.current_price_segment = 1
 		d = cs.to_dict()
-		assert d["price_band_counter"] == 2
-		assert d["current_price_band"] == "high"
+		assert d["price_segment_counter"] == 2
+		assert d["current_price_segment"] == 1
 		assert "token_expired" in d
