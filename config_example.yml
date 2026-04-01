@@ -36,10 +36,6 @@ price_floor_anchors:
     - { price_cents: 20, soc_floor_pct: 30 }
     - { price_cents: 30, soc_floor_pct: 20 }
 
-# Price threshold for extreme-price overrides (cents)
-# Above this, battery discharges even during daytime
-extreme_price_threshold: 20
-
 # Conservative night floor (outside peak window)
 night_floor_pct:
   summer: 25

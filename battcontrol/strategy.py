@@ -161,7 +161,6 @@ def _daylight_logic(
 	afternoon_target = battcontrol.config.get_seasonal_value(
 		config, "afternoon_target_soc_pct", season
 	)
-	extreme_threshold = config.get("extreme_price_threshold", 20)
 	logger.info(
 		"Daylight: surplus %.0fW (solar %.0fW - load %.0fW)",
 		surplus, solar_power_watts, load_power_watts,
@@ -207,16 +206,20 @@ def _daylight_logic(
 		# B.2b: at or above target, check headroom
 		band_high = config.get("headroom_band_high", 95)
 		band_low = config.get("headroom_band_low", 85)
-		if battery_soc >= band_high and comed_price_cents >= extreme_threshold:
+		if battery_soc >= band_high and comed_price_cents > comed_cutoff_cents:
 			# allow limited discharge to create headroom for more solar
+			headroom_floor = battcontrol.config.get_price_floor(
+				config, season, comed_price_cents
+			)
 			logger.info(
-				"Creating headroom: SoC %d%% >= %d%%, price %.1fc extreme",
-				battery_soc, band_high, comed_price_cents,
+				"Creating headroom: SoC %d%% >= %d%%, price %.1fc > cutoff %.1fc, floor %d%%",
+				battery_soc, band_high, comed_price_cents, comed_cutoff_cents, headroom_floor,
 			)
 			return DecisionResult(
 				action=Action.DISCHARGE_ENABLED,
-				reason=f"Creating headroom: SoC {battery_soc}% >= {band_high}%, extreme price",
-				soc_floor=band_low,
+				reason=(f"Creating headroom: SoC {battery_soc}% >= {band_high}%, "
+					f"price {comed_price_cents:.1f}c > cutoff {comed_cutoff_cents:.1f}c"),
+				soc_floor=headroom_floor,
 				target_mode="self_consumption",
 			)
 		if battery_soc >= band_high and comed_price_cents < 0:
@@ -233,8 +236,8 @@ def _daylight_logic(
 			)
 		# not exporting or price is cheap, hold at target
 		logger.info(
-			"At target: SoC %d%% >= target %d%%, price %.1fc not extreme",
-			battery_soc, afternoon_target, comed_price_cents,
+			"At target: SoC %d%% >= target %d%%, price %.1fc <= cutoff %.1fc",
+			battery_soc, afternoon_target, comed_price_cents, comed_cutoff_cents,
 		)
 		return DecisionResult(
 			action=Action.CHARGE_FROM_SOLAR,
@@ -243,32 +246,35 @@ def _daylight_logic(
 			target_mode="self_consumption",
 		)
 	# section B.3: no solar surplus
-	if comed_price_cents >= extreme_threshold:
-		# B.3a: extreme price override
-		extreme_floor = battcontrol.config.get_seasonal_value(
-			config, "hard_reserve_pct", season
+	if comed_price_cents > comed_cutoff_cents:
+		# B.3a: price above cutoff, discharge with interpolated floor
+		price_floor = battcontrol.config.get_price_floor(
+			config, season, comed_price_cents
+		)
+		segment_idx = battcontrol.config.get_price_segment_index(
+			config, season, comed_price_cents
 		)
 		logger.info(
-			"Extreme price override: %.1fc >= %dc, discharging to floor %d%%",
-			comed_price_cents, extreme_threshold, extreme_floor,
+			"No surplus, price %.1fc > cutoff %.1fc, discharging to floor %d%%",
+			comed_price_cents, comed_cutoff_cents, price_floor,
 		)
 		return DecisionResult(
 			action=Action.DISCHARGE_ENABLED,
-			reason=(f"No surplus, extreme price {comed_price_cents:.1f}c >= "
-				f"{extreme_threshold}c"),
-			soc_floor=extreme_floor,
-			price_segment=-1,
+			reason=(f"No surplus, price {comed_price_cents:.1f}c > "
+				f"cutoff {comed_cutoff_cents:.1f}c"),
+			soc_floor=price_floor,
+			price_segment=segment_idx,
 			target_mode="self_consumption",
 		)
 	# B.3b: self-consumption at current SoC -- no grid charging, captures solar when surplus appears
 	logger.info(
-		"Self-consumption hold: no surplus, price %.1fc below extreme %dc, reserve %d%%",
-		comed_price_cents, extreme_threshold, battery_soc,
+		"Self-consumption hold: no surplus, price %.1fc <= cutoff %.1fc, reserve %d%%",
+		comed_price_cents, comed_cutoff_cents, battery_soc,
 	)
 	return DecisionResult(
 		action=Action.DISCHARGE_DISABLED,
-		reason=(f"No surplus, price {comed_price_cents:.1f}c not extreme, "
-			f"self-consumption hold at {battery_soc}%"),
+		reason=(f"No surplus, price {comed_price_cents:.1f}c <= "
+			f"cutoff {comed_cutoff_cents:.1f}c, hold at {battery_soc}%"),
 		soc_floor=battery_soc,
 		target_mode="self_consumption",
 	)
@@ -278,6 +284,7 @@ def _daylight_logic(
 def _night_logic(
 	battery_soc: int,
 	comed_price_cents: float,
+	comed_cutoff_cents: float,
 	season: str,
 	current_time: datetime.datetime,
 	config: dict,
@@ -288,6 +295,7 @@ def _night_logic(
 	Args:
 		battery_soc: Current SoC percentage.
 		comed_price_cents: Current ComEd price in cents.
+		comed_cutoff_cents: Reasonable cutoff price from comedlib.
 		season: 'summer', 'shoulder', or 'winter'.
 		current_time: Current datetime.
 		config: Configuration dictionary.
@@ -295,28 +303,35 @@ def _night_logic(
 	Returns:
 		DecisionResult: The night decision.
 	"""
-	extreme_threshold = config.get("extreme_price_threshold", 20)
 	night_floor = battcontrol.config.get_seasonal_value(
 		config, "night_floor_pct", season
 	)
-	# D.2: discharge only if extreme price and above night floor
-	if comed_price_cents >= extreme_threshold and battery_soc > night_floor:
+	# D.2: discharge only if price above cutoff and above night floor
+	if comed_price_cents > comed_cutoff_cents and battery_soc > night_floor:
+		# use price anchors but never go below night floor
+		price_floor = max(
+			battcontrol.config.get_price_floor(config, season, comed_price_cents),
+			night_floor,
+		)
+		segment_idx = battcontrol.config.get_price_segment_index(
+			config, season, comed_price_cents
+		)
 		logger.info(
-			"Night extreme: price %.1fc >= %dc, SoC %d%% > floor %d%%, discharging",
-			comed_price_cents, extreme_threshold, battery_soc, night_floor,
+			"Night discharge: price %.1fc > cutoff %.1fc, SoC %d%% > floor %d%%",
+			comed_price_cents, comed_cutoff_cents, battery_soc, price_floor,
 		)
 		return DecisionResult(
 			action=Action.DISCHARGE_ENABLED,
-			reason=(f"Night extreme price {comed_price_cents:.1f}c, discharging to "
-				f"floor {night_floor}%"),
-			soc_floor=night_floor,
-			price_segment=-1,
+			reason=(f"Night price {comed_price_cents:.1f}c > "
+				f"cutoff {comed_cutoff_cents:.1f}c, floor {price_floor}%"),
+			soc_floor=price_floor,
+			price_segment=segment_idx,
 			target_mode="self_consumption",
 		)
 	# otherwise hold
 	logger.info(
-		"Night hold: price %.1fc vs extreme %dc, SoC %d%% vs floor %d%%",
-		comed_price_cents, extreme_threshold, battery_soc, night_floor,
+		"Night hold: price %.1fc vs cutoff %.1fc, SoC %d%% vs floor %d%%",
+		comed_price_cents, comed_cutoff_cents, battery_soc, night_floor,
 	)
 	return DecisionResult(
 		action=Action.DISCHARGE_DISABLED,
@@ -478,7 +493,8 @@ def evaluate(
 		else:
 			logger.info("Entering night logic")
 			result = _night_logic(
-				battery_soc, comed_price_cents, season, current_time, config
+				battery_soc, comed_price_cents, comed_cutoff_cents,
+				season, current_time, config
 			)
 		logger.info("Decision: %s", result)
 		return result

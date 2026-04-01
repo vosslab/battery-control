@@ -31,7 +31,6 @@ class TestLoadConfig:
 		assert config["battery_capacity_kwh"] == 20.0
 		assert config["peak_window_start"] == 16
 		assert config["peak_window_end"] == 22
-		assert config["extreme_price_threshold"] == 20
 		assert config["reserve_soc_buffer_pct"] == 2
 
 	#============================================

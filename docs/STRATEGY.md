@@ -84,7 +84,7 @@ Then: go to Daylight logic (section B).
 
 ### B. Daylight logic (solar capture)
 
-Goal: charge from solar. Avoid discharging unless prices are extreme or you need headroom to avoid wasting solar.
+Goal: charge from solar. Avoid discharging unless prices are above cutoff or you need headroom to avoid wasting solar.
 
 1. Compute "Solar Surplus" = solar generation minus house load.
 If you cannot measure load, approximate surplus by battery charging rate or net export if available.
@@ -93,10 +93,9 @@ If you cannot measure load, approximate surplus by battery charging rate or net 
   - 2a. If SoC < Afternoon Target SoC (100% all seasons)
 Then: `CHARGE_FROM_SOLAR` with target SoC as reserve. Stop.
   - 2b. If SoC >= Afternoon Target SoC
-Then: create headroom only if needed. If battery is near full and price is extreme, `DISCHARGE_ENABLED` with headroom band (example 85 to 95%). If battery is near full and price is negative, also `DISCHARGE_ENABLED` with headroom band to absorb solar instead of exporting at a loss. Otherwise `CHARGE_FROM_SOLAR`. Stop.
+Then: create headroom only if needed. If battery is near full and price is above cutoff, `DISCHARGE_ENABLED` with interpolated price floor. If battery is near full and price is negative, also `DISCHARGE_ENABLED` with headroom band to absorb solar instead of exporting at a loss. Otherwise `CHARGE_FROM_SOLAR`. Stop.
 3. If Surplus <= 0 (solar not excess, likely clouds or high load)
-  - 3a. If current price is in an "Extreme" band (example >= 20 cents)
-Then: `DISCHARGE_ENABLED` with Extreme Floor (example 10% summer, 15% shoulder, 20% winter). Stop.
+  - 3a. If predicted price > usage cutoff: `DISCHARGE_ENABLED` with interpolated price floor. Stop.
   - 3b. Else: `DISCHARGE_DISABLED` to preserve SoC for evening. Stop.
 
 ### C. Transition trigger
@@ -111,7 +110,7 @@ Goal: preserve battery unless prices are painful.
 1. If time is inside Peak Window (example 4pm to 10pm)
 Then: go to Peak logic (section E).
 2. Else (late night, early morning)
-  - If price >= Extreme band: `DISCHARGE_ENABLED` with extreme floor.
+  - If price > usage cutoff: `DISCHARGE_ENABLED` with interpolated price floor (clamped to at least Night Floor).
   - Otherwise: `DISCHARGE_DISABLED` with Night Floor (example 35% winter, 30% shoulder, 25% summer).
 
 ### E. Peak logic (evening arbitrage)

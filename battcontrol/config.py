@@ -41,8 +41,6 @@ DEFAULTS = {
 			{"price_cents": 30, "soc_floor_pct": 20},
 		],
 	},
-	# extreme price threshold for daytime discharge override
-	"extreme_price_threshold": 20,
 	# conservative night floor when not in peak window
 	"night_floor_pct": {"summer": 25, "shoulder": 30, "winter": 35},
 	# headroom band for near-full battery during solar surplus

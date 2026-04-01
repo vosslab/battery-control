@@ -2,6 +2,21 @@
 
 ## 2026-04-01
 
+### Behavior or Interface Changes
+
+- Removed `extreme_price_threshold` (hard-coded 20c gate) from strategy, config,
+  and config example; this was a stopgap that predated `comed_cutoff_cents` being
+  wired through the strategy
+- B.2b headroom, B.3a no-surplus, and D.2 night discharge gates now use the
+  comedlib cutoff price (`comed_cutoff_cents`) instead of the removed threshold;
+  discharge floors use interpolated price-to-SoC anchors instead of
+  `hard_reserve_pct` or `band_low`
+- Night logic (D.2) now receives `comed_cutoff_cents` and clamps the interpolated
+  price floor to at least `night_floor_pct` so night discharge never goes below
+  the configured night floor
+- Updated [docs/STRATEGY.md](docs/STRATEGY.md) to replace all "extreme" language
+  with cutoff-based language in sections B.2b, B.3a, and D.2
+
 ### Additions and New Features
 
 - Added shoulder season (Mar-Apr, Oct-Nov) to three-season model: summer
