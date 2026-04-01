@@ -4,6 +4,23 @@
 
 ### Additions and New Features
 
+- Switched decision engine price input from `getCurrentComedRate()` to
+  `getPredictedRate()` which uses linear regression on the current hour's data
+  to estimate where price is heading; current rate is still logged for reference
+- Simplified decision engine Action enum from 6 values to 3: `CHARGE_FROM_SOLAR`,
+  `DISCHARGE_ENABLED`, `DISCHARGE_DISABLED`; each maps to an EP Cube mode and
+  a SoC reserve rule; removed `CHARGE_FROM_GRID` (violates site constraint),
+  collapsed `HOLD`, `ALLOW_DISCHARGE`, `FORCE_NO_DISCHARGE`, `DISCHARGE_TO_FLOOR`,
+  `DISCHARGE_ALLOWED` into the 3 new actions
+- Removed `max_discharge_kwh_this_hour` from `DecisionResult`; pacing calculation
+  remains internal to floor selection only
+- Decision engine now takes `load_power_watts` (renamed from `backup_power_watts`);
+  `battery_controller.py` passes `smart_home_power_watts` with fallback to
+  `backup_power_watts` and logs which source was used
+- Summary log line now shows EP Cube mode name and reserve SoC:
+  `discharge_enabled | Mode: Self-consumption | reserve 45% | reason`
+- Updated `docs/STRATEGY.md` with 3-action policy model, seasonal targets
+  (100% summer for A/C, 70% winter), softened TOU and Backup constraint wording
 - Added `smart_home_power_watts`, `non_backup_power_watts`, and
   `battery_power_watts` to `epcube_client.py` normalized output; `smartHomePower`
   is the best candidate for total house load; updated controller status log to

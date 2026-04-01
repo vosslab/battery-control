@@ -90,24 +90,14 @@ def execute_wemo(action: decision_engine.Action, config: dict, dry_run: bool) ->
 	if not charge_plug and not discharge_plug:
 		logger.info("No WeMo plugs configured, skipping WeMo actuator")
 		return False
-	if action == decision_engine.Action.CHARGE_FROM_GRID:
-		# turn on charge plug, turn off discharge plug
-		logger.info("WeMo: charging from grid")
-		success_charge = _set_plug_state(charge_plug, True, dry_run)
-		success_discharge = _set_plug_state(discharge_plug, False, dry_run)
-		return success_charge
-	if action in (
-		decision_engine.Action.ALLOW_DISCHARGE,
-		decision_engine.Action.DISCHARGE_TO_FLOOR,
-		decision_engine.Action.DISCHARGE_ALLOWED,
-	):
+	if action == decision_engine.Action.DISCHARGE_ENABLED:
 		# turn on discharge plug, turn off charge plug
-		logger.info("WeMo: discharging to grid")
-		success_charge = _set_plug_state(charge_plug, False, dry_run)
-		success_discharge = _set_plug_state(discharge_plug, True, dry_run)
-		return success_discharge
-	# HOLD or FORCE_NO_DISCHARGE: turn off both plugs
-	logger.info("WeMo: holding (both plugs off)")
+		logger.info("WeMo: discharge enabled")
+		_set_plug_state(charge_plug, False, dry_run)
+		success = _set_plug_state(discharge_plug, True, dry_run)
+		return success
+	# CHARGE_FROM_SOLAR or DISCHARGE_DISABLED: turn off both plugs
+	logger.info("WeMo: discharge disabled (both plugs off)")
 	_set_plug_state(charge_plug, False, dry_run)
 	_set_plug_state(discharge_plug, False, dry_run)
 	return True

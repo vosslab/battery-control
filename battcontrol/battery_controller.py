@@ -84,18 +84,26 @@ def _setup_logging(verbose: int) -> None:
 #============================================
 def _fetch_comed_price() -> tuple:
 	"""
-	Fetch current ComEd price and median.
+	Fetch predicted ComEd price and median for decision making.
+
+	Uses getPredictedRate() which applies linear regression on the current
+	hour's data points to estimate where the price is heading. This is better
+	for proactive decisions than the instantaneous current rate.
 
 	Returns:
-		tuple: (current_price_cents, median_cents) or (None, None) on failure.
+		tuple: (predicted_price_cents, median_cents) or (None, None) on failure.
 	"""
 	try:
 		import battcontrol.comedlib
 		comlib = battcontrol.comedlib.ComedLib()
+		predicted_price = comlib.getPredictedRate()
 		current_price = comlib.getCurrentComedRate()
 		median_price, _ = comlib.getMedianComedRate()
-		logger.info("ComEd price: %.2fc (median: %.2fc)", current_price, median_price)
-		return current_price, median_price
+		logger.info(
+			"ComEd price: predicted %.2fc, current %.2fc, median %.2fc",
+			predicted_price, current_price, median_price,
+		)
+		return predicted_price, median_price
 	except Exception as err:
 		logger.error("Failed to fetch ComEd price: %s", err)
 		return None, None
@@ -361,7 +369,7 @@ def main() -> None:
 	if comed_price is None:
 		logger.warning("ComEd price unavailable, holding current state")
 		control_state.save()
-		_print_summary("HOLD", "ComEd unavailable", dry_run)
+		_print_summary("discharge_disabled", "Backup", 0, "ComEd unavailable", dry_run)
 		return
 	# fetch EP Cube data
 	epcube_data, epcube_client = _fetch_epcube_data(config, control_state)
@@ -374,16 +382,24 @@ def main() -> None:
 		# no device data available, hold current state
 		logger.warning("EP Cube data unavailable, holding current state")
 		control_state.save()
-		_print_summary("HOLD", "EP Cube unavailable", dry_run)
+		_print_summary("discharge_disabled", "Backup", 0, "EP Cube unavailable", dry_run)
 		return
 	battery_soc = epcube_data.get("battery_soc", 0)
 	solar_power = epcube_data.get("solar_power_watts", 0)
-	backup_power = epcube_data.get("backup_power_watts", 0)
+	# select load source: prefer smartHomePower, fall back to backUpPower
+	smart_home_load = epcube_data.get("smart_home_power_watts", 0)
+	backup_load = epcube_data.get("backup_power_watts", 0)
+	if smart_home_load > 0:
+		load_power = smart_home_load
+		logger.info("Load source: smartHomePower (%.0fW)", load_power)
+	else:
+		load_power = backup_load
+		logger.info("Load source: backUpPower fallback (%.0fW)", load_power)
 	# run decision engine
 	result = decision_engine.decide(
 		battery_soc=battery_soc,
 		solar_power_watts=solar_power,
-		backup_power_watts=backup_power,
+		load_power_watts=load_power,
 		comed_price_cents=comed_price,
 		comed_median_cents=comed_median,
 		config=config,
@@ -412,22 +428,25 @@ def main() -> None:
 	# save state
 	control_state.save()
 	# print summary line for cron log
-	_print_summary(result.action.value, result.reason, dry_run)
+	mode_name = decision_engine.ACTION_MODE_MAP.get(result.action, "?")
+	_print_summary(result.action.value, mode_name, result.soc_floor, result.reason, dry_run)
 
 
 #============================================
-def _print_summary(action: str, reason: str, dry_run: bool) -> None:
+def _print_summary(action: str, mode_name: str, reserve_soc: int, reason: str, dry_run: bool) -> None:
 	"""
 	Print a one-line summary suitable for cron logs.
 
 	Args:
-		action: Action name.
+		action: Policy action name.
+		mode_name: EP Cube mode name.
+		reserve_soc: Reserve SoC percentage.
 		reason: Decision reason.
 		dry_run: Whether in dry-run mode.
 	"""
-	mode_tag = "[DRY]" if dry_run else "[LIVE]"
+	run_tag = "[DRY]" if dry_run else "[LIVE]"
 	now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-	print(f"{mode_tag} {now_str} action={action} | {reason}")
+	print(f"{run_tag} {now_str} {action} | Mode: {mode_name} | reserve {reserve_soc}% | {reason}")
 
 
 #============================================

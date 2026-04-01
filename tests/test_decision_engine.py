@@ -3,9 +3,6 @@
 # Standard Library
 import datetime
 
-# PIP3 modules
-import pytest
-
 # local repo modules
 import git_file_utils
 
@@ -43,11 +40,11 @@ class TestGuards:
 		# summer hard reserve is 10%
 		now = datetime.datetime(2025, 7, 15, 14, 0)
 		result = decision_engine.decide(
-			battery_soc=10, solar_power_watts=0, backup_power_watts=0,
+			battery_soc=10, solar_power_watts=0, load_power_watts=0,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.FORCE_NO_DISCHARGE
+		assert result.action == decision_engine.Action.DISCHARGE_DISABLED
 		assert "Hard reserve" in result.reason
 
 	#============================================
@@ -58,11 +55,11 @@ class TestGuards:
 		# winter hard reserve is 20%
 		now = datetime.datetime(2025, 1, 15, 14, 0)
 		result = decision_engine.decide(
-			battery_soc=20, solar_power_watts=0, backup_power_watts=0,
+			battery_soc=20, solar_power_watts=0, load_power_watts=0,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.FORCE_NO_DISCHARGE
+		assert result.action == decision_engine.Action.DISCHARGE_DISABLED
 
 	#============================================
 	def test_above_hard_reserve_proceeds(self):
@@ -71,11 +68,11 @@ class TestGuards:
 		cs = _make_state()
 		now = datetime.datetime(2025, 7, 15, 14, 0)
 		result = decision_engine.decide(
-			battery_soc=50, solar_power_watts=500, backup_power_watts=200,
+			battery_soc=50, solar_power_watts=500, load_power_watts=200,
 			comed_price_cents=5.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action != decision_engine.Action.FORCE_NO_DISCHARGE or "Hard reserve" not in result.reason
+		assert result.action != decision_engine.Action.DISCHARGE_DISABLED or "Hard reserve" not in result.reason
 
 
 #============================================
@@ -84,31 +81,31 @@ class TestDaylightLogic:
 
 	#============================================
 	def test_solar_surplus_below_target(self):
-		"""Solar surplus with SoC below afternoon target: no discharge."""
+		"""Solar surplus with SoC below afternoon target: charge from solar."""
 		config = _make_config()
 		cs = _make_state()
 		# summer afternoon target is 90%
 		now = datetime.datetime(2025, 7, 15, 12, 0)
 		result = decision_engine.decide(
-			battery_soc=60, solar_power_watts=3000, backup_power_watts=1000,
+			battery_soc=60, solar_power_watts=3000, load_power_watts=1000,
 			comed_price_cents=5.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.FORCE_NO_DISCHARGE
-		assert "afternoon target" in result.reason
+		assert result.action == decision_engine.Action.CHARGE_FROM_SOLAR
+		assert "target" in result.reason
 
 	#============================================
 	def test_solar_surplus_above_target_hold(self):
-		"""Solar surplus with SoC above target and normal price: hold."""
+		"""Solar surplus with SoC above target and normal price: charge from solar."""
 		config = _make_config()
 		cs = _make_state()
 		now = datetime.datetime(2025, 7, 15, 12, 0)
 		result = decision_engine.decide(
-			battery_soc=92, solar_power_watts=3000, backup_power_watts=1000,
+			battery_soc=92, solar_power_watts=3000, load_power_watts=1000,
 			comed_price_cents=5.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.FORCE_NO_DISCHARGE
+		assert result.action == decision_engine.Action.CHARGE_FROM_SOLAR
 
 	#============================================
 	def test_solar_surplus_headroom_extreme_price(self):
@@ -117,11 +114,11 @@ class TestDaylightLogic:
 		cs = _make_state()
 		now = datetime.datetime(2025, 7, 15, 12, 0)
 		result = decision_engine.decide(
-			battery_soc=96, solar_power_watts=3000, backup_power_watts=1000,
+			battery_soc=96, solar_power_watts=3000, load_power_watts=1000,
 			comed_price_cents=25.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.ALLOW_DISCHARGE
+		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
 		assert "headroom" in result.reason.lower()
 
 	#============================================
@@ -131,11 +128,11 @@ class TestDaylightLogic:
 		cs = _make_state()
 		now = datetime.datetime(2025, 7, 15, 12, 0)
 		result = decision_engine.decide(
-			battery_soc=80, solar_power_watts=100, backup_power_watts=500,
+			battery_soc=80, solar_power_watts=100, load_power_watts=500,
 			comed_price_cents=25.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.DISCHARGE_TO_FLOOR
+		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
 		assert "extreme" in result.reason.lower()
 
 	#============================================
@@ -145,11 +142,11 @@ class TestDaylightLogic:
 		cs = _make_state()
 		now = datetime.datetime(2025, 7, 15, 12, 0)
 		result = decision_engine.decide(
-			battery_soc=80, solar_power_watts=100, backup_power_watts=500,
+			battery_soc=80, solar_power_watts=100, load_power_watts=500,
 			comed_price_cents=5.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.FORCE_NO_DISCHARGE
+		assert result.action == decision_engine.Action.DISCHARGE_DISABLED
 		assert "preserving" in result.reason.lower()
 
 
@@ -165,11 +162,11 @@ class TestNightLogic:
 		# 11pm, no solar, outside peak window
 		now = datetime.datetime(2025, 7, 15, 23, 0)
 		result = decision_engine.decide(
-			battery_soc=60, solar_power_watts=0, backup_power_watts=500,
+			battery_soc=60, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=25.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.DISCHARGE_TO_FLOOR
+		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
 
 	#============================================
 	def test_night_normal_price(self):
@@ -178,11 +175,11 @@ class TestNightLogic:
 		cs = _make_state()
 		now = datetime.datetime(2025, 7, 16, 2, 0)
 		result = decision_engine.decide(
-			battery_soc=40, solar_power_watts=0, backup_power_watts=200,
+			battery_soc=40, solar_power_watts=0, load_power_watts=200,
 			comed_price_cents=3.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.HOLD
+		assert result.action == decision_engine.Action.DISCHARGE_DISABLED
 
 
 #============================================
@@ -197,11 +194,11 @@ class TestPeakLogic:
 		# 6pm summer, no solar
 		now = datetime.datetime(2025, 7, 15, 18, 0)
 		result = decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, backup_power_watts=500,
+			battery_soc=80, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=25.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.DISCHARGE_TO_FLOOR
+		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
 		assert result.price_band == "high"
 		assert result.soc_floor == 10  # summer high band floor
 
@@ -212,43 +209,26 @@ class TestPeakLogic:
 		cs = _make_state()
 		now = datetime.datetime(2025, 7, 15, 18, 0)
 		result = decision_engine.decide(
-			battery_soc=50, solar_power_watts=0, backup_power_watts=500,
+			battery_soc=50, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=3.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
 		# SoC 50% == low band floor 50%, should hold
-		assert result.action == decision_engine.Action.HOLD
+		assert result.action == decision_engine.Action.DISCHARGE_DISABLED
 
 	#============================================
-	def test_peak_mid_price_paced(self):
-		"""Peak window with mid price: paced discharge."""
+	def test_peak_mid_price_discharge(self):
+		"""Peak window with mid price: discharge enabled."""
 		config = _make_config()
 		cs = _make_state()
 		now = datetime.datetime(2025, 7, 15, 18, 0)
 		result = decision_engine.decide(
-			battery_soc=70, solar_power_watts=0, backup_power_watts=500,
+			battery_soc=70, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.DISCHARGE_ALLOWED
+		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
 		assert result.price_band == "mid_high"
-		assert result.max_discharge_kwh_this_hour > 0
-
-	#============================================
-	def test_peak_pacing_calculation(self):
-		"""Pacing spreads energy over remaining hours."""
-		config = _make_config()
-		cs = _make_state()
-		# 6pm, 4 hours remaining until 10pm
-		now = datetime.datetime(2025, 7, 15, 18, 0)
-		result = decision_engine.decide(
-			battery_soc=60, solar_power_watts=0, backup_power_watts=500,
-			comed_price_cents=15.0, comed_median_cents=8.0,
-			config=config, control_state=cs, current_time=now,
-		)
-		# SoC 60%, floor 20% (mid_high summer), usable = 40% of 20kWh = 8kWh
-		# 4 remaining hours: max 2 kWh/hr
-		assert result.max_discharge_kwh_this_hour == pytest.approx(2.0, abs=0.1)
 
 	#============================================
 	def test_peak_winter_higher_floors(self):
@@ -258,7 +238,7 @@ class TestPeakLogic:
 		# January, 6pm
 		now = datetime.datetime(2025, 1, 15, 18, 0)
 		result = decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, backup_power_watts=500,
+			battery_soc=80, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
@@ -272,7 +252,7 @@ class TestPeakLogic:
 		assert cs.peak_mode_active is False
 		now = datetime.datetime(2025, 7, 15, 18, 0)
 		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, backup_power_watts=500,
+			battery_soc=80, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
@@ -291,14 +271,14 @@ class TestHysteresis:
 		now = datetime.datetime(2025, 7, 15, 18, 0)
 		# first check
 		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, backup_power_watts=500,
+			battery_soc=80, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
 		first_count = cs.price_band_counter
 		# second check, same price
 		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, backup_power_watts=500,
+			battery_soc=80, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
@@ -312,12 +292,12 @@ class TestHysteresis:
 		now = datetime.datetime(2025, 7, 15, 18, 0)
 		# two identical decisions
 		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, backup_power_watts=500,
+			battery_soc=80, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
 		decision_engine.decide(
-			battery_soc=80, solar_power_watts=0, backup_power_watts=500,
+			battery_soc=80, solar_power_watts=0, load_power_watts=500,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
@@ -336,7 +316,7 @@ class TestTransitionTrigger:
 		# 4pm with solar
 		now = datetime.datetime(2025, 7, 15, 16, 0)
 		decision_engine.decide(
-			battery_soc=80, solar_power_watts=500, backup_power_watts=200,
+			battery_soc=80, solar_power_watts=500, load_power_watts=200,
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
@@ -351,9 +331,9 @@ class TestTransitionTrigger:
 		cs.last_solar_above_threshold_at = datetime.datetime(2025, 7, 15, 14, 0).isoformat()
 		now = datetime.datetime(2025, 7, 15, 14, 0)
 		result = decision_engine.decide(
-			battery_soc=60, solar_power_watts=3000, backup_power_watts=1000,
+			battery_soc=60, solar_power_watts=3000, load_power_watts=1000,
 			comed_price_cents=5.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.FORCE_NO_DISCHARGE
+		assert result.action == decision_engine.Action.CHARGE_FROM_SOLAR
 		assert cs.peak_mode_active is False

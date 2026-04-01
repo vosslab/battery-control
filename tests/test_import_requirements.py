@@ -28,6 +28,7 @@ IMPORT_REQUIREMENT_ALIASES = {
 	"bio": "biopython",
 	"bs4": "beautifulsoup4",
 	"cairo": "pycairo",
+	"colour": "colour-science",
 	"crypto": "pycryptodome",
 	"cv2": "opencv-python",
 	"google": "google-api-python-client",

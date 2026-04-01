@@ -22,54 +22,42 @@ class TestExecuteWemo:
 		"""No WeMo plugs configured returns False."""
 		config = {"wemo_charge_plug_name": "", "wemo_discharge_plug_name": ""}
 		result = wemo_actuator.execute_wemo(
-			decision_engine.Action.HOLD, config, dry_run=True
+			decision_engine.Action.DISCHARGE_DISABLED, config, dry_run=True
 		)
 		assert result is False
 
 	#============================================
-	def test_charge_from_grid_dry_run(self):
-		"""CHARGE_FROM_GRID in dry run logs correctly."""
+	def test_discharge_enabled_dry_run(self):
+		"""DISCHARGE_ENABLED in dry run enables discharge plug."""
 		config = {
 			"wemo_charge_plug_name": "Charger",
 			"wemo_discharge_plug_name": "Discharger",
 		}
 		result = wemo_actuator.execute_wemo(
-			decision_engine.Action.CHARGE_FROM_GRID, config, dry_run=True
+			decision_engine.Action.DISCHARGE_ENABLED, config, dry_run=True
 		)
 		assert result is True
 
 	#============================================
-	def test_discharge_dry_run(self):
-		"""ALLOW_DISCHARGE in dry run logs correctly."""
+	def test_discharge_disabled_dry_run(self):
+		"""DISCHARGE_DISABLED in dry run turns off both plugs."""
 		config = {
 			"wemo_charge_plug_name": "Charger",
 			"wemo_discharge_plug_name": "Discharger",
 		}
 		result = wemo_actuator.execute_wemo(
-			decision_engine.Action.ALLOW_DISCHARGE, config, dry_run=True
+			decision_engine.Action.DISCHARGE_DISABLED, config, dry_run=True
 		)
 		assert result is True
 
 	#============================================
-	def test_hold_dry_run(self):
-		"""HOLD in dry run turns off both plugs."""
+	def test_charge_from_solar_dry_run(self):
+		"""CHARGE_FROM_SOLAR in dry run turns off both plugs."""
 		config = {
 			"wemo_charge_plug_name": "Charger",
 			"wemo_discharge_plug_name": "Discharger",
 		}
 		result = wemo_actuator.execute_wemo(
-			decision_engine.Action.HOLD, config, dry_run=True
-		)
-		assert result is True
-
-	#============================================
-	def test_force_no_discharge_dry_run(self):
-		"""FORCE_NO_DISCHARGE in dry run turns off both plugs."""
-		config = {
-			"wemo_charge_plug_name": "Charger",
-			"wemo_discharge_plug_name": "Discharger",
-		}
-		result = wemo_actuator.execute_wemo(
-			decision_engine.Action.FORCE_NO_DISCHARGE, config, dry_run=True
+			decision_engine.Action.CHARGE_FROM_SOLAR, config, dry_run=True
 		)
 		assert result is True

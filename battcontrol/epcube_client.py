@@ -267,13 +267,25 @@ def execute_epcube(decision_result, client: EpcubeClient, config: dict, dry_run:
 	action = decision_result.action
 	soc_floor = decision_result.soc_floor
 	target_mode = decision_result.target_mode
-	# map target_mode to EP Cube mode number
-	if target_mode == "backup":
-		mode_num = 3
-		reserve_soc = soc_floor
-	elif target_mode == "self_consumption":
+	# map action to EP Cube mode and reserve SoC
+	# CHARGE_FROM_SOLAR -> Self-consumption (mode 1) with target SoC as reserve
+	# DISCHARGE_ENABLED -> Self-consumption (mode 1) with price-band floor
+	# DISCHARGE_DISABLED -> Backup (mode 3) with max(soc_floor, current SoC)
+	if target_mode == "self_consumption":
 		mode_num = 1
 		reserve_soc = soc_floor
+	elif target_mode == "backup":
+		mode_num = 3
+		# clamp reserve to at least current SoC to truly block discharge
+		current_data_for_clamp = client.get_device_data()
+		current_soc = 0
+		if current_data_for_clamp is not None:
+			current_soc = current_data_for_clamp.get("battery_soc", 0)
+		reserve_soc = max(soc_floor, current_soc)
+		logger.info(
+			"Backup SoC clamp: floor %d%%, current %d%%, using %d%%",
+			soc_floor, current_soc, reserve_soc,
+		)
 	else:
 		logger.info("EP Cube: no mode change needed for action %s", action)
 		return False
@@ -282,7 +294,6 @@ def execute_epcube(decision_result, client: EpcubeClient, config: dict, dry_run:
 	if current_data is not None:
 		current_mode = current_data.get("work_status", "")
 		if current_mode == str(mode_num):
-			# check if reserve SoC also matches (would need getSwitchMode)
 			logger.debug("EP Cube already in mode %d, checking reserve SoC", mode_num)
 	if dry_run:
 		logger.info(

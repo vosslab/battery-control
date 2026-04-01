@@ -128,7 +128,7 @@ class TestExecuteEpcube:
 		"""Dry run logs backup mode change without sending."""
 		from battcontrol.decision_engine import Action, DecisionResult
 		result = DecisionResult(
-			action=Action.FORCE_NO_DISCHARGE,
+			action=Action.DISCHARGE_DISABLED,
 			reason="test",
 			soc_floor=50,
 			target_mode="backup",
@@ -146,7 +146,7 @@ class TestExecuteEpcube:
 		"""No client returns False."""
 		from battcontrol.decision_engine import Action, DecisionResult
 		result = DecisionResult(
-			action=Action.HOLD,
+			action=Action.DISCHARGE_DISABLED,
 			reason="test",
 			soc_floor=50,
 			target_mode="backup",

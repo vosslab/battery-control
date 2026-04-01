@@ -104,7 +104,7 @@ class TestSmokePipeline:
 		result = decision_engine.decide(
 			battery_soc=epcube_data["battery_soc"],
 			solar_power_watts=epcube_data["solar_power_watts"],
-			backup_power_watts=epcube_data["backup_power_watts"],
+			load_power_watts=epcube_data["backup_power_watts"],
 			comed_price_cents=comed_price,
 			comed_median_cents=comed_median,
 			config=config,
@@ -131,7 +131,7 @@ class TestSmokePipeline:
 		result = decision_engine.decide(
 			battery_soc=70,
 			solar_power_watts=0,
-			backup_power_watts=500,
+			load_power_watts=500,
 			comed_price_cents=15.0,
 			comed_median_cents=8.0,
 			config=config,
@@ -157,7 +157,7 @@ class TestSmokePipeline:
 		result = decision_engine.decide(
 			battery_soc=50,
 			solar_power_watts=0,
-			backup_power_watts=500,
+			load_power_watts=500,
 			comed_price_cents=12.0,
 			comed_median_cents=8.0,
 			config=config,
@@ -184,14 +184,14 @@ class TestSmokePipeline:
 		result = decision_engine.decide(
 			battery_soc=80,
 			solar_power_watts=100,
-			backup_power_watts=500,
+			load_power_watts=500,
 			comed_price_cents=30.0,
 			comed_median_cents=8.0,
 			config=config,
 			control_state=control_state,
 			current_time=now,
 		)
-		assert result.action == decision_engine.Action.DISCHARGE_TO_FLOOR
+		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
 		control_state.save()
 
 	#============================================
@@ -223,7 +223,7 @@ class TestSmokePipeline:
 			result = decision_engine.decide(
 				battery_soc=soc,
 				solar_power_watts=solar,
-				backup_power_watts=backup,
+				load_power_watts=backup,
 				comed_price_cents=price,
 				comed_median_cents=8.0,
 				config=config,

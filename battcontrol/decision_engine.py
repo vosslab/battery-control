@@ -14,13 +14,24 @@ logger = logging.getLogger(__name__)
 
 #============================================
 class Action(enum.Enum):
-	"""Battery control actions."""
-	HOLD = "hold"
-	ALLOW_DISCHARGE = "allow_discharge"
-	FORCE_NO_DISCHARGE = "force_no_discharge"
-	DISCHARGE_TO_FLOOR = "discharge_to_floor"
-	DISCHARGE_ALLOWED = "discharge_allowed"
-	CHARGE_FROM_GRID = "charge_from_grid"
+	"""Controller policy actions.
+
+	These represent controller intent, not hardware commands.
+	Each action maps to an EP Cube mode and a SoC reserve rule:
+	  CHARGE_FROM_SOLAR -> Self-consumption with high reserve (target SoC)
+	  DISCHARGE_ENABLED -> Self-consumption with floor from price band
+	  DISCHARGE_DISABLED -> Backup with max(current SoC, configured hold floor)
+	"""
+	CHARGE_FROM_SOLAR = "charge_from_solar"
+	DISCHARGE_ENABLED = "discharge_enabled"
+	DISCHARGE_DISABLED = "discharge_disabled"
+
+# maps each action to its EP Cube mode name for logging
+ACTION_MODE_MAP = {
+	Action.CHARGE_FROM_SOLAR: "Self-consumption",
+	Action.DISCHARGE_ENABLED: "Self-consumption",
+	Action.DISCHARGE_DISABLED: "Backup",
+}
 
 
 #============================================
@@ -29,12 +40,11 @@ class DecisionResult:
 	Result from the decision engine.
 
 	Attributes:
-		action: The decided action.
+		action: Controller policy action.
 		reason: Human-readable explanation.
-		soc_floor: Minimum SoC percentage to maintain.
-		price_band: Current price band name.
-		target_mode: EP Cube mode ('self_consumption', 'backup', or '').
-		max_discharge_kwh_this_hour: Pacing limit for discharge.
+		soc_floor: Reserve SoC percentage for this decision.
+		price_band: Current price band name (if applicable).
+		target_mode: EP Cube mode ('self_consumption' or 'backup').
 	"""
 
 	#============================================
@@ -45,32 +55,30 @@ class DecisionResult:
 		soc_floor: int = 0,
 		price_band: str = "",
 		target_mode: str = "",
-		max_discharge_kwh_this_hour: float = 0.0,
 	):
 		"""
 		Initialize a decision result.
 
 		Args:
-			action: The decided action.
+			action: Controller policy action.
 			reason: Human-readable explanation.
-			soc_floor: Minimum SoC percentage.
+			soc_floor: Reserve SoC percentage.
 			price_band: Current price band name.
 			target_mode: EP Cube mode name.
-			max_discharge_kwh_this_hour: Pacing limit.
 		"""
 		self.action = action
 		self.reason = reason
 		self.soc_floor = soc_floor
 		self.price_band = price_band
 		self.target_mode = target_mode
-		self.max_discharge_kwh_this_hour = max_discharge_kwh_this_hour
 
 	#============================================
 	def __repr__(self) -> str:
+		mode_name = ACTION_MODE_MAP.get(self.action, "?")
 		return (
-			f"DecisionResult(action={self.action.value}, reason='{self.reason}', "
-			f"soc_floor={self.soc_floor}, band={self.price_band}, "
-			f"mode={self.target_mode})"
+			f"DecisionResult({self.action.value} | "
+			f"Mode: {mode_name} | reserve {self.soc_floor}% | "
+			f"{self.reason})"
 		)
 
 
@@ -90,21 +98,18 @@ def _is_solar_available(solar_power_watts: float, threshold: float = 50.0) -> bo
 
 
 #============================================
-def _compute_solar_surplus(solar_power_watts: float, backup_power_watts: float) -> float:
+def _compute_solar_surplus(solar_power_watts: float, load_power_watts: float) -> float:
 	"""
 	Estimate solar surplus (solar minus house load).
 
-	Uses backup_power as a proxy for house load since EP Cube
-	provides both values via its API.
-
 	Args:
 		solar_power_watts: Current solar generation.
-		backup_power_watts: Current house consumption from battery/solar.
+		load_power_watts: Current house load (from smartHomePower or backUpPower).
 
 	Returns:
 		float: Surplus in watts (positive means excess solar).
 	"""
-	return solar_power_watts - backup_power_watts
+	return solar_power_watts - load_power_watts
 
 
 #============================================
@@ -178,7 +183,10 @@ def _compute_pacing(
 	config: dict,
 ) -> float:
 	"""
-	Compute pacing limit to avoid depleting battery too early.
+	Compute pacing guideline for floor selection (internal heuristic only).
+
+	This value is used to inform floor choice, not to control discharge rate.
+	The EP Cube does not support rate limiting.
 
 	Args:
 		battery_soc: Current battery state of charge percentage.
@@ -187,7 +195,7 @@ def _compute_pacing(
 		config: Configuration dictionary.
 
 	Returns:
-		float: Maximum kWh to discharge this hour.
+		float: Estimated kWh available per remaining hour.
 	"""
 	capacity = config.get("battery_capacity_kwh", 20.0)
 	peak_end = config.get("peak_window_end", 22)
@@ -198,7 +206,7 @@ def _compute_pacing(
 	remaining_hours = peak_end - current_time.hour
 	if remaining_hours <= 0:
 		remaining_hours = 1
-	# soft cap: spread remaining energy over remaining hours
+	# spread remaining energy over remaining hours
 	max_kwh = usable_kwh / remaining_hours
 	return max_kwh
 
@@ -207,7 +215,7 @@ def _compute_pacing(
 def _daylight_logic(
 	battery_soc: int,
 	solar_power_watts: float,
-	backup_power_watts: float,
+	load_power_watts: float,
 	comed_price_cents: float,
 	season: str,
 	config: dict,
@@ -218,7 +226,7 @@ def _daylight_logic(
 	Args:
 		battery_soc: Current SoC percentage.
 		solar_power_watts: Current solar power in watts.
-		backup_power_watts: Current house load in watts.
+		load_power_watts: Current house load in watts.
 		comed_price_cents: Current ComEd price in cents.
 		season: 'summer' or 'winter'.
 		config: Configuration dictionary.
@@ -226,26 +234,26 @@ def _daylight_logic(
 	Returns:
 		DecisionResult: The daylight decision.
 	"""
-	surplus = _compute_solar_surplus(solar_power_watts, backup_power_watts)
+	surplus = _compute_solar_surplus(solar_power_watts, load_power_watts)
 	afternoon_target = config_mod.get_seasonal_value(config, "afternoon_target_soc_pct", season)
 	extreme_threshold = config.get("extreme_price_threshold", 20)
 	logger.info(
 		"Daylight: surplus %.0fW (solar %.0fW - load %.0fW)",
-		surplus, solar_power_watts, backup_power_watts,
+		surplus, solar_power_watts, load_power_watts,
 	)
 	if surplus > 0:
 		# section B.2: solar is excess
 		if battery_soc < afternoon_target:
 			# B.2a: below afternoon target, let solar charge
 			logger.info(
-				"Charging: SoC %d%% below afternoon target %d%%",
+				"Charging from solar: SoC %d%% below afternoon target %d%%",
 				battery_soc, afternoon_target,
 			)
 			return DecisionResult(
-				action=Action.FORCE_NO_DISCHARGE,
-				reason=f"Solar surplus, SoC {battery_soc}% < afternoon target {afternoon_target}%",
-				soc_floor=battery_soc,
-				target_mode="backup",
+				action=Action.CHARGE_FROM_SOLAR,
+				reason=f"Solar surplus, SoC {battery_soc}% < target {afternoon_target}%",
+				soc_floor=afternoon_target,
+				target_mode="self_consumption",
 			)
 		# B.2b: at or above target, check headroom
 		band_high = config.get("headroom_band_high", 95)
@@ -257,21 +265,21 @@ def _daylight_logic(
 				battery_soc, band_high, comed_price_cents,
 			)
 			return DecisionResult(
-				action=Action.ALLOW_DISCHARGE,
+				action=Action.DISCHARGE_ENABLED,
 				reason=f"Creating headroom: SoC {battery_soc}% >= {band_high}%, extreme price",
 				soc_floor=band_low,
 				target_mode="self_consumption",
 			)
-		# not exporting or price is cheap, hold
+		# not exporting or price is cheap, hold at target
 		logger.info(
-			"Holding: SoC %d%% >= target %d%%, price %.1fc not extreme",
+			"At target: SoC %d%% >= target %d%%, price %.1fc not extreme",
 			battery_soc, afternoon_target, comed_price_cents,
 		)
 		return DecisionResult(
-			action=Action.FORCE_NO_DISCHARGE,
+			action=Action.CHARGE_FROM_SOLAR,
 			reason=f"Solar surplus, SoC {battery_soc}% >= target, holding",
-			soc_floor=battery_soc,
-			target_mode="backup",
+			soc_floor=afternoon_target,
+			target_mode="self_consumption",
 		)
 	# section B.3: no solar surplus
 	if comed_price_cents >= extreme_threshold:
@@ -282,7 +290,7 @@ def _daylight_logic(
 			comed_price_cents, extreme_threshold, extreme_floor,
 		)
 		return DecisionResult(
-			action=Action.DISCHARGE_TO_FLOOR,
+			action=Action.DISCHARGE_ENABLED,
 			reason=f"No surplus, extreme price {comed_price_cents:.1f}c >= {extreme_threshold}c",
 			soc_floor=extreme_floor,
 			price_band="extreme",
@@ -294,7 +302,7 @@ def _daylight_logic(
 		comed_price_cents, extreme_threshold,
 	)
 	return DecisionResult(
-		action=Action.FORCE_NO_DISCHARGE,
+		action=Action.DISCHARGE_DISABLED,
 		reason=f"No surplus, price {comed_price_cents:.1f}c not extreme, preserving for peak",
 		soc_floor=battery_soc,
 		target_mode="backup",
@@ -331,7 +339,7 @@ def _night_logic(
 			comed_price_cents, extreme_threshold, battery_soc, night_floor,
 		)
 		return DecisionResult(
-			action=Action.DISCHARGE_TO_FLOOR,
+			action=Action.DISCHARGE_ENABLED,
 			reason=f"Night extreme price {comed_price_cents:.1f}c, discharging to floor {night_floor}%",
 			soc_floor=night_floor,
 			price_band="extreme",
@@ -343,7 +351,7 @@ def _night_logic(
 		comed_price_cents, extreme_threshold, battery_soc, night_floor,
 	)
 	return DecisionResult(
-		action=Action.HOLD,
+		action=Action.DISCHARGE_DISABLED,
 		reason=f"Night hold: price {comed_price_cents:.1f}c, SoC {battery_soc}%",
 		soc_floor=night_floor,
 		target_mode="backup",
@@ -384,8 +392,8 @@ def _peak_logic(
 		"Peak: price %.1fc -> band '%s', floor %d%%",
 		comed_price_cents, price_band, soc_floor,
 	)
-	# E.3: compute pacing
-	max_discharge = _compute_pacing(battery_soc, soc_floor, current_time, config)
+	# E.3: compute pacing guideline (used for logging, not rate control)
+	_compute_pacing(battery_soc, soc_floor, current_time, config)
 	# E.4: discharge decision
 	if battery_soc <= soc_floor:
 		# at or below floor, hold
@@ -394,49 +402,31 @@ def _peak_logic(
 			battery_soc, soc_floor,
 		)
 		return DecisionResult(
-			action=Action.HOLD,
+			action=Action.DISCHARGE_DISABLED,
 			reason=f"Peak: SoC {battery_soc}% <= floor {soc_floor}% ({price_band})",
 			soc_floor=soc_floor,
 			price_band=price_band,
 			target_mode="backup",
-			max_discharge_kwh_this_hour=0.0,
 		)
-	# above floor, determine discharge intensity
-	if price_band == "high":
-		# top band: discharge hard, ignore pacing
-		logger.info(
-			"Discharging: price %.1fc in 'high' band, SoC %d%% > floor %d%%",
-			comed_price_cents, battery_soc, soc_floor,
-		)
-		return DecisionResult(
-			action=Action.DISCHARGE_TO_FLOOR,
-			reason=f"Peak high band: price {comed_price_cents:.1f}c, discharge to floor {soc_floor}%",
-			soc_floor=soc_floor,
-			price_band=price_band,
-			target_mode="self_consumption",
-			max_discharge_kwh_this_hour=max_discharge * 2,
-		)
-	# mid bands: discharge allowed with floor chosen by pacing heuristic
-	# pacing selects a conservative floor to preserve energy for later peak hours
+	# above floor: discharge enabled
 	peak_end = config.get("peak_window_end", 22)
 	remaining_hours = max(peak_end - current_time.hour, 1)
 	usable_pct = max(battery_soc - soc_floor, 0)
 	capacity = config.get("battery_capacity_kwh", 20.0)
 	usable_kwh = capacity * usable_pct / 100.0
 	logger.info(
-		"Discharge allowed: price %.1fc in '%s' band, "
+		"Discharge enabled: price %.1fc in '%s' band, "
 		"SoC %d%% above %d%% floor, %.1f kWh usable over %d hrs",
 		comed_price_cents, price_band,
 		battery_soc, soc_floor, usable_kwh, remaining_hours,
 	)
 	return DecisionResult(
-		action=Action.DISCHARGE_ALLOWED,
+		action=Action.DISCHARGE_ENABLED,
 		reason=(f"Peak {price_band}: SoC {battery_soc}% above "
-			f"{soc_floor}% floor, discharge allowed"),
+			f"{soc_floor}% floor, discharge enabled"),
 		soc_floor=soc_floor,
 		price_band=price_band,
 		target_mode="self_consumption",
-		max_discharge_kwh_this_hour=max_discharge,
 	)
 
 
@@ -444,7 +434,7 @@ def _peak_logic(
 def decide(
 	battery_soc: int,
 	solar_power_watts: float,
-	backup_power_watts: float,
+	load_power_watts: float,
 	comed_price_cents: float,
 	comed_median_cents: float,
 	config: dict,
@@ -457,7 +447,7 @@ def decide(
 	Args:
 		battery_soc: Current battery state of charge percentage.
 		solar_power_watts: Current solar generation in watts.
-		backup_power_watts: Current house load in watts.
+		load_power_watts: Current house load in watts (from smartHomePower).
 		comed_price_cents: Current ComEd price in cents.
 		comed_median_cents: 24-hour median ComEd price in cents.
 		config: Configuration dictionary.
@@ -475,8 +465,8 @@ def decide(
 	hard_reserve = config_mod.get_seasonal_value(config, "hard_reserve_pct", season)
 	# log key inputs for reasoning trace
 	logger.info(
-		"Inputs: SoC %d%% | Price %.1fc | Solar %.0fW | Hour %d | Season %s",
-		battery_soc, comed_price_cents, solar_power_watts,
+		"Inputs: SoC %d%% | Price %.1fc | Solar %.0fW | Load %.0fW | Hour %d | Season %s",
+		battery_soc, comed_price_cents, solar_power_watts, load_power_watts,
 		current_time.hour, season,
 	)
 	# A.1: hard reserve check
@@ -484,13 +474,13 @@ def decide(
 		reason = f"Hard reserve: SoC {battery_soc}% <= {hard_reserve}%"
 		logger.info("Guard: %s", reason)
 		result = DecisionResult(
-			action=Action.FORCE_NO_DISCHARGE,
+			action=Action.DISCHARGE_DISABLED,
 			reason=reason,
 			soc_floor=hard_reserve,
 			target_mode="backup",
 		)
 		_apply_hysteresis(result, config, control_state)
-		logger.info("Decision: %s | %s", result.action.value, result.reason)
+		logger.info("Decision: %s", result)
 		return result
 	logger.info("Guard: SoC %d%% above hard reserve %d%%", battery_soc, hard_reserve)
 	# A.2/A.3: solar availability check
@@ -515,7 +505,7 @@ def decide(
 				battery_soc, comed_price_cents, season, current_time, config
 			)
 		_apply_hysteresis(result, config, control_state)
-		logger.info("Decision: %s | %s", result.action.value, result.reason)
+		logger.info("Decision: %s", result)
 		return result
 	# solar is available
 	# section C: check transition trigger
@@ -530,16 +520,16 @@ def decide(
 				battery_soc, comed_price_cents, season, current_time, config, control_state
 			)
 			_apply_hysteresis(result, config, control_state)
-			logger.info("Decision: %s | %s", result.action.value, result.reason)
+			logger.info("Decision: %s", result)
 			return result
 	# section B: daylight logic
 	logger.info("Entering daylight logic")
 	result = _daylight_logic(
-		battery_soc, solar_power_watts, backup_power_watts,
+		battery_soc, solar_power_watts, load_power_watts,
 		comed_price_cents, season, config
 	)
 	_apply_hysteresis(result, config, control_state)
-	logger.info("Decision: %s | %s", result.action.value, result.reason)
+	logger.info("Decision: %s", result)
 	return result
 
 

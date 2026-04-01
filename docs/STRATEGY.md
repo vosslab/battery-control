@@ -40,12 +40,11 @@ EP Cube has three operation modes (from the official user manual):
 
 ### Constraint: no grid charging allowed
 
-This installation is **not permitted to charge the battery from the grid**. This is a site constraint, not a hardware limitation. This means:
+This installation is **not permitted to charge the battery from the grid**. This is a site constraint, not a hardware limitation.
 
-- Backup mode must be used carefully: it will attempt to charge from grid if PV is insufficient.
-- Time of Use mode is not suitable: its off-peak behavior charges from grid by design.
+- Backup mode supports grid charging in EP Cube's documented hardware behavior. On this installation, grid charging is disabled in app settings. Re-verify after firmware or app changes.
+- Time of Use mode is not used by the controller because its built-in schedule and off-peak grid-charging behavior do not match this installation's control strategy.
 - Self-consumption is the primary operating mode because it charges from PV only.
-- The controller should only use Backup mode briefly to hold SoC (block discharge), not for sustained periods where grid charging could occur.
 
 ### Controller actuator capabilities
 
@@ -71,26 +70,29 @@ EP Cube reports these power readings via the `homeDeviceInfo` API endpoint (raw 
 | `batterySoc` | `battery_soc` | Battery state of charge (percent) |
 | `workStatus` | `work_status` | Current EP Cube mode number |
 
-## EP Cube modes vs controller policy
+## Controller policy actions
 
-The controller makes policy decisions and translates them into EP Cube hardware modes:
+The controller uses three policy actions. Each determines intent, EP Cube mode, and SoC reserve rule:
 
-| Controller policy | EP Cube mode | Reserve SoC | Effect |
-| --- | --- | --- | --- |
-| Allow discharge | Self-consumption | Floor from price band | Battery serves house load above floor |
-| Preserve energy | Backup | High floor (e.g. 80%) | Holds battery, but may grid-charge |
-| Charge from solar | Self-consumption | Low floor | Solar charges battery, no grid discharge |
+| Policy action | Intent | EP Cube mode | WeMo | Reserve SoC rule |
+| --- | --- | --- | --- | --- |
+| `CHARGE_FROM_SOLAR` | Fill battery from PV | Self-consumption | both off | target SoC (100% summer, 70% winter) |
+| `DISCHARGE_ENABLED` | Battery serves load | Self-consumption | discharge on | floor from price band |
+| `DISCHARGE_DISABLED` | Block discharge | Backup | both off | max(current SoC, configured hold floor) |
 
-Because grid charging is not allowed at this site, Backup mode is used only for short-term discharge blocking. Extended use of Backup mode risks unwanted grid charging.
+### Seasonal intent
 
-Time of Use mode is not used by the controller. The controller implements its own tariff logic using ComEd real-time pricing instead of the EP Cube's built-in TOU schedule.
+- **Summer**: maximize stored energy for evening A/C and peak temperatures. Target 100% SoC before peak hours whenever practical.
+- **Winter**: use lower daytime targets (70%) and more conservative discharge because solar refill is less reliable.
+
+The controller implements its own tariff logic using ComEd real-time pricing rather than the EP Cube's built-in TOU schedule.
 
 ## Flow chart
 
 ### A. Guards (always run first)
 
 1. If battery SoC <= Hard Reserve (example 20% winter, 10% summer)
-Then: set Backup mode to prevent discharge. Stop.
+Then: `DISCHARGE_DISABLED`. Stop.
 2. If inverter solar power is unavailable (night or inverter off)
 Then: go to Night logic (section D).
 3. Otherwise solar is available
@@ -103,14 +105,14 @@ Goal: charge from solar. Avoid discharging unless prices are extreme or you need
 1. Compute "Solar Surplus" = solar generation minus house load.
 If you cannot measure load, approximate surplus by battery charging rate or net export if available.
 2. If Surplus > 0 (solar is excess)
-  - 2a. If SoC < Afternoon Target SoC (example 90% summer, 70% winter)
-Then: set Self-consumption with high reserve. Let solar charge. Stop.
+  - 2a. If SoC < Afternoon Target SoC (100% summer, 70% winter)
+Then: `CHARGE_FROM_SOLAR` with target SoC as reserve. Stop.
   - 2b. If SoC >= Afternoon Target SoC
-Then: create headroom only if needed. If battery is near full and exporting or clipping solar, set Self-consumption with a headroom band (example 85 to 95%). If not exporting, hold. Stop.
+Then: create headroom only if needed. If battery is near full and exporting, `DISCHARGE_ENABLED` with headroom band (example 85 to 95%). Otherwise `CHARGE_FROM_SOLAR`. Stop.
 3. If Surplus <= 0 (solar not excess, likely clouds or high load)
   - 3a. If current price is in an "Extreme" band (example >= 20 cents)
-Then: set Self-consumption with Extreme Floor (example 10% summer, 20% winter). Stop.
-  - 3b. Else: set Backup to preserve SoC for evening. Stop.
+Then: `DISCHARGE_ENABLED` with Extreme Floor (example 10% summer, 20% winter). Stop.
+  - 3b. Else: `DISCHARGE_DISABLED` to preserve SoC for evening. Stop.
 
 ### C. Transition trigger
 
@@ -124,8 +126,8 @@ Goal: preserve battery unless prices are painful.
 1. If time is inside Peak Window (example 4pm to 10pm)
 Then: go to Peak logic (section E).
 2. Else (late night, early morning)
-  - If price >= Extreme band: set Self-consumption with extreme floor.
-  - Otherwise: set Backup with a conservative Night Floor (example 30 to 40% winter, 20 to 30% summer).
+  - If price >= Extreme band: `DISCHARGE_ENABLED` with extreme floor.
+  - Otherwise: `DISCHARGE_DISABLED` with Night Floor (example 30 to 40% winter, 20 to 30% summer).
 
 ### E. Peak logic (evening arbitrage)
 
@@ -152,13 +154,12 @@ Example winter floors (peak window, more conservative):
 Compute "Usable Energy" = battery energy above the selected floor.
 Compute "Remaining Peak Hours" = hours until Peak End (example 10pm).
 Use usable energy / remaining hours as a guideline for selecting a conservative SoC floor. The controller adjusts the floor, not the discharge rate.
-  - If price is moderate: set Self-consumption with a higher floor to preserve energy for later.
-  - If price is very high: set Self-consumption with the lowest seasonal floor.
+  - If price is moderate: `DISCHARGE_ENABLED` with a higher floor to preserve energy for later.
+  - If price is very high: `DISCHARGE_ENABLED` with the lowest seasonal floor.
 
 4. Execute discharge decision
-  - If SoC > Floor AND price is above discharge threshold:
-set Self-consumption with floor as reserve SoC.
-  - Else: set Backup to hold SoC.
+  - If SoC > Floor AND price is above discharge threshold: `DISCHARGE_ENABLED` with floor as reserve SoC.
+  - Else: `DISCHARGE_DISABLED` to hold SoC.
 
 ### F. Reliability tricks for 3-minute scheduler
 
@@ -168,4 +169,4 @@ set Self-consumption with floor as reserve SoC.
 
 ## Summary
 
-The controller uses ComEd real-time pricing and solar power to choose between Self-consumption (allow discharge with a floor) and Backup (hold SoC). The pacing heuristic selects the floor, not the discharge rate. The EP Cube inverter handles actual power flow based on house load. Grid charging is not permitted at this site, so Self-consumption is the primary mode and Backup is used only for short-term discharge blocking.
+The controller uses three policy actions (`CHARGE_FROM_SOLAR`, `DISCHARGE_ENABLED`, `DISCHARGE_DISABLED`) based on ComEd real-time pricing, solar power, and SoC. Each action maps to an EP Cube mode and a reserve SoC rule. The pacing heuristic guides floor selection, not discharge rate. The inverter handles actual power flow based on house load. Summer targets 100% SoC for evening A/C demand; winter uses lower targets due to less reliable solar.
