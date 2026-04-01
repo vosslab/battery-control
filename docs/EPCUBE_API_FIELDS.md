@@ -13,8 +13,8 @@ source source_me.sh && python3 -m battcontrol.battery_controller --dump-raw
 ```
 
 This writes two files with alphabetically sorted keys:
-- `epcube_raw_YYYYMMDD_HHMMSS.json` -- raw API payload (sensitive fields masked)
-- `epcube_normalized_YYYYMMDD_HHMMSS.json` -- normalized state (power * 10, etc.)
+- `epcube_raw_YYYYMMDD_HHMMSS.json` -- raw API payload (56 fields, sensitive fields masked)
+- `epcube_normalized_YYYYMMDD_HHMMSS.json` -- normalized state (15 fields: power * 10, electricity in kWh)
 
 The `run_daemon.py` wrapper strips `--dump-raw` after the first cycle so it only
 fires once.
@@ -31,6 +31,8 @@ Raw values are multiplied by 10 to get watts in the normalized output.
 | `smartHomePower` | `smart_home_power_watts` | W (raw * 10) | Total house load (= backUpPower + nonBackUpPower) |
 | `nonBackUpPower` | `non_backup_power_watts` | W (raw * 10) | Load on non-backup panel |
 | `batteryPower` | `battery_power_watts` | W (raw * 10) | Battery power (sign convention TBD, observed as 0 when idle) |
+| `generatorPower` | not normalized | W (raw * 10) | Generator power (0 when no generator) |
+| `evPower` | not normalized | W (raw * 10) | EV charger power (0 when no EV charger) |
 
 ## Energy fields (cumulative counters)
 
@@ -39,18 +41,18 @@ Confirmed daily counters in kWh by comparing 8:33 AM and 9:11 AM snapshots:
 raw `gridPower` of ~108 (= 1080W). Exception: `batteryCurrentElectricity` appears
 to be a lifetime counter, not daily (12.28 kWh at 9:11 AM with battery idle all morning).
 
-| Raw field | Likely unit | Description |
-| --- | --- | --- |
-| `gridElectricity` | kWh | Cumulative grid energy (daily or lifetime TBD) |
-| `solarElectricity` | kWh | Cumulative solar energy |
-| `solarDcElectricity` | kWh | Solar DC component |
-| `solarAcElectricity` | kWh | Solar AC component |
-| `backUpElectricity` | kWh | Cumulative backup panel energy |
-| `smartHomeElectricity` | kWh | Cumulative total home energy |
-| `nonBackUpElectricity` | kWh | Cumulative non-backup panel energy |
-| `generatorElectricity` | kWh | Cumulative generator energy |
-| `evElectricity` | kWh | Cumulative EV charger energy |
-| `batteryCurrentElectricity` | kWh | Current stored energy in battery (see note below) |
+| Raw field | Normalized key | Likely unit | Description |
+| --- | --- | --- | --- |
+| `gridElectricity` | `grid_electricity_kwh` | kWh | Cumulative grid energy (daily counter) |
+| `solarElectricity` | `solar_electricity_kwh` | kWh | Cumulative solar energy |
+| `solarDcElectricity` | not normalized | kWh | Solar DC component |
+| `solarAcElectricity` | not normalized | kWh | Solar AC component |
+| `backUpElectricity` | `backup_electricity_kwh` | kWh | Cumulative backup panel energy |
+| `smartHomeElectricity` | `smart_home_electricity_kwh` | kWh | Cumulative total home energy |
+| `nonBackUpElectricity` | `non_backup_electricity_kwh` | kWh | Cumulative non-backup panel energy |
+| `generatorElectricity` | not normalized | kWh | Cumulative generator energy |
+| `evElectricity` | not normalized | kWh | Cumulative EV charger energy |
+| `batteryCurrentElectricity` | `battery_electricity_kwh` | kWh | Current stored energy in battery (see note below) |
 
 ### Counter verification results
 
@@ -109,7 +111,7 @@ possibly representing inverter output before efficiency losses.
 | Raw field | Normalized key | Description |
 | --- | --- | --- |
 | `batterySoc` | `battery_soc` | State of charge (percentage, 0-100) |
-| `batteryCurrentElectricity` | not normalized | Cumulative battery energy |
+| `batteryCurrentElectricity` | `battery_electricity_kwh` | Current stored energy in battery |
 
 ## System status fields
 
@@ -118,11 +120,13 @@ possibly representing inverter output before efficiency losses.
 | `devId` | `device_id` | Device identifier (masked in logs) |
 | `workStatus` | `work_status` | Current operating mode number |
 | `status` | not normalized | System status string ("1" = normal) |
-| `systemStatus` | not normalized | System status code (4 = normal) |
+| `systemStatus` | not normalized | System status code (observed 4 and 6) |
 | `isAlert` | not normalized | Alert flag ("0" = none) |
 | `isFault` | not normalized | Fault flag ("0" = none) |
 | `backUpType` | not normalized | Backup type (1 = standard) |
-| `gridLight` | not normalized | Grid connection indicator |
+| `gridLight` | not normalized | Grid connection indicator ("1" = connected) |
+| `generatorLight` | not normalized | Generator connection indicator ("3" = not connected) |
+| `evLight` | not normalized | EV charger connection indicator ("0" = not connected) |
 | `version` | not normalized | Firmware version string |
 | `payloadVersion` | not normalized | API payload version (25) |
 
@@ -134,6 +138,7 @@ possibly representing inverter output before efficiency losses.
 | `defTimeZone` | Device default timezone (`America/Los_Angeles`) |
 | `fromCreateTime` | Timestamp in user timezone |
 | `fromTimeZone` | User timezone (`America/Chicago`) |
+| `fromType` | Timezone type indicator ("1") |
 
 ## Capability flags
 
@@ -145,6 +150,7 @@ possibly representing inverter output before efficiency losses.
 | `systemSpecialWorkMode` | Special work mode (0 = none) |
 | `gridStandard` | Grid standard type (1) |
 | `backupLoadsMode` | Backup loads mode (1) |
+| `isNewDevice` | New device flag (true) |
 
 ## Other fields
 
@@ -157,93 +163,88 @@ possibly representing inverter output before efficiency losses.
 
 ## Example raw payload
 
-From `--dump-raw` output at 2026-04-01 08:33 (sensitive fields masked):
+From `--dump-raw` output at 2026-04-01 10:00 (sensitive fields masked, sorted
+alphabetically). All 56 fields shown:
 
 ```json
 {
-  "devId": "***",
-  "status": "1",
-  "workStatus": "3",
-  "batterySoc": 61,
-  "batteryCurrentElectricity": 12.26,
-  "gridPowerFailureNum": 0,
-  "gridPower": 112.0,
-  "gridElectricity": 12.53,
-  "solarPower": 35.0,
-  "solarElectricity": 0.31,
-  "solarDcElectricity": 0.0,
-  "solarAcElectricity": 0.31,
-  "generatorPower": 0.0,
-  "generatorElectricity": 0.0,
-  "evPower": 0.0,
-  "evElectricity": 0.0,
-  "nonBackUpPower": 0.0,
-  "nonBackUpElectricity": 0.0,
-  "backUpPower": 148.0,
-  "backUpElectricity": 12.82,
-  "selfHelpRate": 3.0,
+  "backUpElectricity": 15.26,
+  "backUpFlowPower": 59.0,
+  "backUpPower": 59.0,
+  "backUpType": 1,
+  "backupLoadsMode": 1,
+  "batteryCurrentElectricity": 12.8,
   "batteryPower": 0,
-  "smartHomePower": 148.0,
-  "smartHomeElectricity": 12.82,
-  "gridTotalPower": 112.0,
-  "gridHalfPower": 112.0,
-  "solarFlow": 35.0,
-  "solarAcPower": 33.0,
-  "solarDcPower": 0.0,
-  "systemStatus": 4,
+  "batterySoc": 64,
+  "defCreateTime": "2026-04-01 08:00:19",
+  "defTimeZone": "America/Los_Angeles",
+  "devId": "***",
+  "evElectricity": 0.0,
+  "evFlowPower": 0.0,
+  "evLight": "0",
+  "evPower": 0.0,
+  "fromCreateTime": "2026-04-01 10:00:19",
+  "fromTimeZone": "America/Chicago",
+  "fromType": "1",
+  "generatorElectricity": 0.0,
+  "generatorFlowPower": 0.0,
+  "generatorLight": "3",
+  "generatorPower": 0.0,
+  "gridElectricity": 14.53,
+  "gridHalfPower": 0.0,
+  "gridLight": "1",
+  "gridPower": 0.0,
+  "gridPowerFailureNum": 0,
+  "gridStandard": 1,
+  "gridTotalPower": 0.0,
+  "hasEv": false,
+  "hasGenerator": false,
+  "isAlert": "0",
+  "isFault": "0",
+  "isNewDevice": true,
+  "newVersionTou": false,
+  "nonBackUpElectricity": 0.0,
+  "nonBackUpFlowPower": 0.0,
+  "nonBackUpPower": 0.0,
+  "off_ON_Grid_Hint": "EP CUBE is optimizing your energy independence for cost saving.",
   "payloadVersion": 25,
-  "version": "03030328025920251022"
-}
-```
-
-Second snapshot from `--dump-raw` at 2026-04-01 09:11 (sensitive fields masked):
-
-```json
-{
-  "devId": "***",
-  "status": "1",
-  "workStatus": "3",
-  "batterySoc": 61,
-  "batteryCurrentElectricity": 12.28,
-  "gridPowerFailureNum": 0,
-  "gridPower": 104.0,
-  "gridElectricity": 13.32,
-  "solarPower": 52.0,
-  "solarElectricity": 0.56,
+  "ressNumber": 1,
+  "selfHelpRate": 5.0,
+  "smartHomeElectricity": 15.26,
+  "smartHomePower": 59.0,
+  "solarAcElectricity": 1.1,
+  "solarAcPower": 74.0,
   "solarDcElectricity": 0.0,
-  "solarAcElectricity": 0.56,
-  "generatorPower": 0.0,
-  "generatorElectricity": 0.0,
-  "evPower": 0.0,
-  "evElectricity": 0.0,
-  "nonBackUpPower": 0.0,
-  "nonBackUpElectricity": 0.0,
-  "backUpPower": 157.0,
-  "backUpElectricity": 13.85,
-  "selfHelpRate": 4.0,
-  "batteryPower": 0,
-  "smartHomePower": 157.0,
-  "smartHomeElectricity": 13.85,
-  "gridTotalPower": 104.0,
-  "gridHalfPower": 104.0,
-  "solarFlow": 52.0,
-  "solarAcPower": 57.0,
   "solarDcPower": 0.0,
-  "backUpFlowPower": 157.0
+  "solarElectricity": 1.1,
+  "solarFlow": 67.0,
+  "solarPower": 67.0,
+  "status": "1",
+  "systemSpecialWorkMode": 0,
+  "systemStatus": 6,
+  "version": "03030328025920251022",
+  "workStatus": "1"
 }
 ```
 
-Normalized output (power values multiplied by 10):
+Normalized output (power * 10, electricity in kWh):
 
 ```json
 {
-  "battery_soc": 61,
-  "solar_power_watts": 350.0,
-  "grid_power_watts": 1120.0,
-  "backup_power_watts": 1480.0,
-  "smart_home_power_watts": 1480.0,
-  "non_backup_power_watts": 0.0,
+  "backup_electricity_kwh": 15.26,
+  "backup_power_watts": 590.0,
+  "battery_electricity_kwh": 12.8,
   "battery_power_watts": 0.0,
-  "work_status": "3"
+  "battery_soc": 64,
+  "device_id": "***",
+  "grid_electricity_kwh": 14.53,
+  "grid_power_watts": 0.0,
+  "non_backup_electricity_kwh": 0.0,
+  "non_backup_power_watts": 0.0,
+  "smart_home_electricity_kwh": 15.26,
+  "smart_home_power_watts": 590.0,
+  "solar_electricity_kwh": 1.1,
+  "solar_power_watts": 670.0,
+  "work_status": "1"
 }
 ```

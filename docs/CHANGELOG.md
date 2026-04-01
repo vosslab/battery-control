@@ -2,6 +2,15 @@
 
 ## 2026-04-01
 
+### Additions and New Features
+
+- Updated [docs/EPCUBE_API_FIELDS.md](docs/EPCUBE_API_FIELDS.md) from fresh
+  `--dump-raw` output at 10:00 AM: added 6 missing raw fields (`evPower`,
+  `generatorPower`, `evLight`, `generatorLight`, `fromType`, `isNewDevice`),
+  added normalized keys to energy fields table (now 15 normalized fields
+  including electricity in kWh), replaced example payloads with complete
+  56-field dump, noted `systemStatus` value 6 and `workStatus` value "1"
+
 ### Behavior or Interface Changes
 
 - Created [docs/EPCUBE_MODE_BEHAVIOR.md](docs/EPCUBE_MODE_BEHAVIOR.md) documenting
