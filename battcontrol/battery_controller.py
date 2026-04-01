@@ -3,6 +3,7 @@
 """Main battery controller - orchestrates config, data fetch, decision, and actuation."""
 
 # Standard Library
+import os
 import logging
 import argparse
 import datetime
@@ -30,8 +31,8 @@ def parse_args() -> argparse.Namespace:
 		description="Battery control system for EP Cube and WeMo batteries"
 	)
 	parser.add_argument(
-		'-c', '--config', dest='config_file', required=True,
-		help="Path to YAML configuration file",
+		'-c', '--config', dest='config_file', default='config.yml',
+		help="Path to YAML configuration file (default: config.yml)",
 	)
 	parser.add_argument(
 		'-n', '--dry-run', dest='dry_run',
@@ -285,6 +286,11 @@ def main() -> None:
 	_setup_logging(args.verbose)
 	now = datetime.datetime.now()
 	# load config
+	if not os.path.isfile(args.config_file):
+		raise FileNotFoundError(
+			f"Config file not found: {args.config_file}\n"
+			f"Copy config_example.yml to config.yml or pass -c <path>"
+		)
 	config = config_mod.load_config(args.config_file)
 	# override dry_run from CLI
 	dry_run = args.dry_run

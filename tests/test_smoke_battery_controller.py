@@ -16,6 +16,34 @@ sys.path.insert(0, REPO_ROOT)
 import battcontrol.config as config_mod
 import battcontrol.state as state_mod
 import battcontrol.decision_engine as decision_engine
+import battcontrol.battery_controller as battery_controller_mod
+
+
+#============================================
+class TestParseArgs:
+	"""Tests for battery_controller parse_args defaults."""
+
+	#============================================
+	def test_config_defaults_to_config_yml(self, monkeypatch):
+		"""Config file defaults to config.yml when -c is not provided."""
+		# simulate no CLI args (just the program name)
+		monkeypatch.setattr("sys.argv", ["battery_controller"])
+		args = battery_controller_mod.parse_args()
+		assert args.config_file == "config.yml"
+
+	#============================================
+	def test_config_override(self, monkeypatch):
+		"""Config file can be overridden with -c flag."""
+		monkeypatch.setattr("sys.argv", ["battery_controller", "-c", "custom.yml"])
+		args = battery_controller_mod.parse_args()
+		assert args.config_file == "custom.yml"
+
+	#============================================
+	def test_dry_run_default(self, monkeypatch):
+		"""Dry run is the default mode."""
+		monkeypatch.setattr("sys.argv", ["battery_controller"])
+		args = battery_controller_mod.parse_args()
+		assert args.dry_run is True
 
 
 #============================================

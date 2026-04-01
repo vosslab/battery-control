@@ -4,6 +4,29 @@
 
 ### Additions and New Features
 
+- Created `run_battery_controller.py` root stub script for discoverable entry point;
+  delegates to `battcontrol.battery_controller.main()` with no logic duplication
+- Added decision-path logging to `battcontrol/decision_engine.py` so verbose mode
+  (`-v`) shows a reasoning trace: inputs, which logic block was chosen, and why the
+  final action won; logs are tied to returns so they stay aligned with actual behavior
+
+### Behavior or Interface Changes
+
+- Changed `-c`/`--config` from required to optional with default `config.yml`;
+  clear error message when missing suggests copying `config_example.yml`
+- Verbose mode (`-v`) now shows full decision reasoning at INFO level: season,
+  guard check, solar availability, path entered, price band, pacing, and final
+  decision; debug mode (`-vv`) adds hysteresis counters and sub-checks
+- Updated `README.md` and `docs/USAGE.md` run commands to use
+  `run_battery_controller.py`
+
+### Developer Tests and Notes
+
+- Added `TestParseArgs` class to `tests/test_smoke_battery_controller.py` with
+  tests for default config path, config override, and dry-run default
+
+### Previous additions and new features
+
 - Created `epcube_get_token.py` standalone CLI script for EP Cube token generation
   - Solves jigsaw CAPTCHA using alpha-contour matching: extracts the jigsaw
     silhouette from the piece PNG alpha channel and matches it against Canny

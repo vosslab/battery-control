@@ -24,30 +24,30 @@ All other parameters have sensible defaults from
 
 ```bash
 # dry-run mode (default, logs decisions without sending commands)
-source source_me.sh && python3 -m battcontrol.battery_controller -c config.yml -n
+source source_me.sh && python3 run_battery_controller.py -n
 
 # execute mode (sends real commands to EP Cube and WeMo)
-source source_me.sh && python3 -m battcontrol.battery_controller -c config.yml -x
+source source_me.sh && python3 run_battery_controller.py -x
 
-# verbose output (use -vv for debug level)
-source source_me.sh && python3 -m battcontrol.battery_controller -c config.yml -n -v
+# verbose output shows decision reasoning (use -vv for debug level)
+source source_me.sh && python3 run_battery_controller.py -n -v
 ```
 
 ### Arguments
 
 | Flag | Description |
 | --- | --- |
-| `-c`, `--config` | Path to YAML config file (required) |
+| `-c`, `--config` | Path to YAML config file (default: `config.yml`) |
 | `-n`, `--dry-run` | Log decisions without sending commands (default) |
 | `-x`, `--execute` | Send real commands to devices |
-| `-v`, `--verbose` | Increase logging verbosity (repeat for more) |
+| `-v`, `--verbose` | Show decision reasoning trace (repeat for debug) |
 
 ## Cron setup
 
 Run every 3 minutes to match ComEd's 5-minute price feed:
 
 ```
-*/3 * * * * cd /path/to/battery-control && source source_me.sh && python3 -m battcontrol.battery_controller -c config.yml -x >> /tmp/battery_control.log 2>&1
+*/3 * * * * cd /path/to/battery-control && source source_me.sh && python3 run_battery_controller.py -x >> /tmp/battery_control.log 2>&1
 ```
 
 ## State file

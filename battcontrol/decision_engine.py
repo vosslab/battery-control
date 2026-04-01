@@ -229,10 +229,18 @@ def _daylight_logic(
 	surplus = _compute_solar_surplus(solar_power_watts, backup_power_watts)
 	afternoon_target = config_mod.get_seasonal_value(config, "afternoon_target_soc_pct", season)
 	extreme_threshold = config.get("extreme_price_threshold", 20)
+	logger.info(
+		"Daylight: surplus %.0fW (solar %.0fW - load %.0fW)",
+		surplus, solar_power_watts, backup_power_watts,
+	)
 	if surplus > 0:
 		# section B.2: solar is excess
 		if battery_soc < afternoon_target:
 			# B.2a: below afternoon target, let solar charge
+			logger.info(
+				"Charging: SoC %d%% below afternoon target %d%%",
+				battery_soc, afternoon_target,
+			)
 			return DecisionResult(
 				action=Action.FORCE_NO_DISCHARGE,
 				reason=f"Solar surplus, SoC {battery_soc}% < afternoon target {afternoon_target}%",
@@ -244,6 +252,10 @@ def _daylight_logic(
 		band_low = config.get("headroom_band_low", 85)
 		if battery_soc >= band_high and comed_price_cents >= extreme_threshold:
 			# allow limited discharge to create headroom for more solar
+			logger.info(
+				"Creating headroom: SoC %d%% >= %d%%, price %.1fc extreme",
+				battery_soc, band_high, comed_price_cents,
+			)
 			return DecisionResult(
 				action=Action.ALLOW_DISCHARGE,
 				reason=f"Creating headroom: SoC {battery_soc}% >= {band_high}%, extreme price",
@@ -251,6 +263,10 @@ def _daylight_logic(
 				target_mode="autoconsumo",
 			)
 		# not exporting or price is cheap, hold
+		logger.info(
+			"Holding: SoC %d%% >= target %d%%, price %.1fc not extreme",
+			battery_soc, afternoon_target, comed_price_cents,
+		)
 		return DecisionResult(
 			action=Action.FORCE_NO_DISCHARGE,
 			reason=f"Solar surplus, SoC {battery_soc}% >= target, holding",
@@ -261,6 +277,10 @@ def _daylight_logic(
 	if comed_price_cents >= extreme_threshold:
 		# B.3a: extreme price override
 		extreme_floor = config_mod.get_seasonal_value(config, "hard_reserve_pct", season)
+		logger.info(
+			"Extreme price override: %.1fc >= %dc, discharging to floor %d%%",
+			comed_price_cents, extreme_threshold, extreme_floor,
+		)
 		return DecisionResult(
 			action=Action.DISCHARGE_TO_FLOOR,
 			reason=f"No surplus, extreme price {comed_price_cents:.1f}c >= {extreme_threshold}c",
@@ -269,6 +289,10 @@ def _daylight_logic(
 			target_mode="autoconsumo",
 		)
 	# B.3b: preserve for evening
+	logger.info(
+		"Preserving for peak: no surplus, price %.1fc below extreme %dc",
+		comed_price_cents, extreme_threshold,
+	)
 	return DecisionResult(
 		action=Action.FORCE_NO_DISCHARGE,
 		reason=f"No surplus, price {comed_price_cents:.1f}c not extreme, preserving for peak",
@@ -302,6 +326,10 @@ def _night_logic(
 	night_floor = config_mod.get_seasonal_value(config, "night_floor_pct", season)
 	# D.2: discharge only if extreme price and above night floor
 	if comed_price_cents >= extreme_threshold and battery_soc > night_floor:
+		logger.info(
+			"Night extreme: price %.1fc >= %dc, SoC %d%% > floor %d%%, discharging",
+			comed_price_cents, extreme_threshold, battery_soc, night_floor,
+		)
 		return DecisionResult(
 			action=Action.DISCHARGE_TO_FLOOR,
 			reason=f"Night extreme price {comed_price_cents:.1f}c, discharging to floor {night_floor}%",
@@ -310,6 +338,10 @@ def _night_logic(
 			target_mode="autoconsumo",
 		)
 	# otherwise hold
+	logger.info(
+		"Night hold: price %.1fc vs extreme %dc, SoC %d%% vs floor %d%%",
+		comed_price_cents, extreme_threshold, battery_soc, night_floor,
+	)
 	return DecisionResult(
 		action=Action.HOLD,
 		reason=f"Night hold: price {comed_price_cents:.1f}c, SoC {battery_soc}%",
@@ -348,11 +380,19 @@ def _peak_logic(
 	# E.2: select SoC floor from price band
 	soc_floor = config_mod.get_price_band_floor(config, season, comed_price_cents)
 	price_band = config_mod.get_price_band_name(config, season, comed_price_cents)
+	logger.info(
+		"Peak: price %.1fc -> band '%s', floor %d%%",
+		comed_price_cents, price_band, soc_floor,
+	)
 	# E.3: compute pacing
 	max_discharge = _compute_pacing(battery_soc, soc_floor, current_time, config)
 	# E.4: discharge decision
 	if battery_soc <= soc_floor:
 		# at or below floor, hold
+		logger.info(
+			"At floor: SoC %d%% <= %d%%, holding",
+			battery_soc, soc_floor,
+		)
 		return DecisionResult(
 			action=Action.HOLD,
 			reason=f"Peak: SoC {battery_soc}% <= floor {soc_floor}% ({price_band})",
@@ -364,6 +404,10 @@ def _peak_logic(
 	# above floor, determine discharge intensity
 	if price_band == "high":
 		# top band: discharge hard, ignore pacing
+		logger.info(
+			"Discharging: price %.1fc in 'high' band, SoC %d%% > floor %d%%",
+			comed_price_cents, battery_soc, soc_floor,
+		)
 		return DecisionResult(
 			action=Action.DISCHARGE_TO_FLOOR,
 			reason=f"Peak high band: price {comed_price_cents:.1f}c, discharge to floor {soc_floor}%",
@@ -373,6 +417,18 @@ def _peak_logic(
 			max_discharge_kwh_this_hour=max_discharge * 2,
 		)
 	# mid bands: discharge with pacing
+	# compute remaining peak hours for the log
+	peak_end = config.get("peak_window_end", 22)
+	remaining_hours = max(peak_end - current_time.hour, 1)
+	usable_pct = max(battery_soc - soc_floor, 0)
+	capacity = config.get("battery_capacity_kwh", 20.0)
+	usable_kwh = capacity * usable_pct / 100.0
+	logger.info(
+		"Discharging paced: price %.1fc in '%s' band, "
+		"%.1f kWh usable, %d hrs left -> %.1f kWh/hr max",
+		comed_price_cents, price_band,
+		usable_kwh, remaining_hours, max_discharge,
+	)
 	return DecisionResult(
 		action=Action.DISCHARGE_PACED,
 		reason=f"Peak {price_band}: price {comed_price_cents:.1f}c, paced to {max_discharge:.1f} kWh/hr",
@@ -416,48 +472,73 @@ def decide(
 	season = config_mod.get_season(config, current_time)
 	# section A: guards
 	hard_reserve = config_mod.get_seasonal_value(config, "hard_reserve_pct", season)
+	# log key inputs for reasoning trace
+	logger.info(
+		"Inputs: SoC %d%% | Price %.1fc | Solar %.0fW | Hour %d | Season %s",
+		battery_soc, comed_price_cents, solar_power_watts,
+		current_time.hour, season,
+	)
 	# A.1: hard reserve check
 	if battery_soc <= hard_reserve:
+		reason = f"Hard reserve: SoC {battery_soc}% <= {hard_reserve}%"
+		logger.info("Guard: %s", reason)
 		result = DecisionResult(
 			action=Action.FORCE_NO_DISCHARGE,
-			reason=f"Hard reserve: SoC {battery_soc}% <= {hard_reserve}%",
+			reason=reason,
 			soc_floor=hard_reserve,
 			target_mode="backup",
 		)
 		_apply_hysteresis(result, config, control_state)
+		logger.info("Decision: %s | %s", result.action.value, result.reason)
 		return result
+	logger.info("Guard: SoC %d%% above hard reserve %d%%", battery_soc, hard_reserve)
 	# A.2/A.3: solar availability check
 	solar_threshold = config.get("solar_sunset_threshold_watts", 50)
 	solar_available = _is_solar_available(solar_power_watts, solar_threshold)
+	solar_tag = "yes" if solar_available else "no"
+	logger.info(
+		"Solar available: %s (%.0fW, threshold %dW)",
+		solar_tag, solar_power_watts, solar_threshold,
+	)
 	if not solar_available:
 		# no solar: night logic or peak logic
 		# check if in peak window
 		if _is_in_peak_window(current_time, config):
+			logger.info("Entering peak logic")
 			result = _peak_logic(
 				battery_soc, comed_price_cents, season, current_time, config, control_state
 			)
 		else:
+			logger.info("Entering night logic")
 			result = _night_logic(
 				battery_soc, comed_price_cents, season, current_time, config
 			)
 		_apply_hysteresis(result, config, control_state)
+		logger.info("Decision: %s | %s", result.action.value, result.reason)
 		return result
 	# solar is available
 	# section C: check transition trigger
 	if _should_transition_to_peak(current_time, solar_power_watts, control_state, config):
 		# peak mode holds once entered (section F.2)
 		if control_state.peak_mode_active or _is_in_peak_window(current_time, config):
+			logger.info(
+				"Transition to peak: hour %d, peak mode active",
+				current_time.hour,
+			)
 			result = _peak_logic(
 				battery_soc, comed_price_cents, season, current_time, config, control_state
 			)
 			_apply_hysteresis(result, config, control_state)
+			logger.info("Decision: %s | %s", result.action.value, result.reason)
 			return result
 	# section B: daylight logic
+	logger.info("Entering daylight logic")
 	result = _daylight_logic(
 		battery_soc, solar_power_watts, backup_power_watts,
 		comed_price_cents, season, config
 	)
 	_apply_hysteresis(result, config, control_state)
+	logger.info("Decision: %s | %s", result.action.value, result.reason)
 	return result
 
 
@@ -481,9 +562,14 @@ def _apply_hysteresis(
 	friction_count = config.get("token_friction_count", 2)
 	# track price band changes
 	if result.price_band:
-		control_state.update_price_band(result.price_band)
+		band_changed = control_state.update_price_band(result.price_band)
+		if band_changed:
+			logger.info(
+				"Band changed to '%s' (%d/%d checks needed)",
+				result.price_band, control_state.price_band_counter, hysteresis_count,
+			)
 		# if band just changed and not enough consecutive checks, hold previous
-		if control_state.price_band_counter < hysteresis_count:
+		elif control_state.price_band_counter < hysteresis_count:
 			logger.debug(
 				"Hysteresis: band %s has %d/%d consecutive checks",
 				result.price_band, control_state.price_band_counter, hysteresis_count
