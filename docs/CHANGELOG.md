@@ -32,6 +32,14 @@
   `update_price_band()` to `update_price_segment()`
 - Updated `docs/STRATEGY.md` to describe interpolation with anchor tables
 
+### Additions and New Features (docs)
+
+- Created `docs/CODE_ARCHITECTURE.md` with system overview, component descriptions,
+  data flow diagram, entry points, testing, and extension points
+- Created `docs/FILE_STRUCTURE.md` with top-level layout, key subtree tables,
+  generated artifact inventory, and guidance for adding new work
+- Added links to both new docs in `README.md` documentation section
+
 - Added file logging to `battery_controller.log` in CWD (append mode, always
   INFO level); terminal verbosity is still controlled by `-v` flags
 - Switched decision engine price input from `getCurrentComedRate()` to

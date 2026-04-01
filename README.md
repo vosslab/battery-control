@@ -38,6 +38,8 @@ source source_me.sh && python3 -m pytest tests/ -v
 
 - [docs/STRATEGY.md](docs/STRATEGY.md): battery control strategy flowchart (sections A-F).
 - [docs/USAGE.md](docs/USAGE.md): CLI usage, cron setup, and token management.
+- [docs/CODE_ARCHITECTURE.md](docs/CODE_ARCHITECTURE.md): system design and data flow.
+- [docs/FILE_STRUCTURE.md](docs/FILE_STRUCTURE.md): directory layout and file purposes.
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): change history.
 - [docs/PYTHON_STYLE.md](docs/PYTHON_STYLE.md): Python coding conventions.
 - [docs/REPO_STYLE.md](docs/REPO_STYLE.md): repository layout and file conventions.
