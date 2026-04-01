@@ -4,47 +4,15 @@ A "set it and forget it" flow chart that uses only two reliable inputs available
 
 The design goal: fill the battery when solar is available, then spend it during expensive grid hours, while avoiding dumb cycling and avoiding running out too early in the evening.
 
-## EP Cube hardware reference
+## EP Cube mode semantics
 
-EP Cube has three operation modes (from the official user manual):
+Mode behavior, charging sources, and reserve semantics are documented in
+[docs/EPCUBE_MODE_BEHAVIOR.md](docs/EPCUBE_MODE_BEHAVIOR.md). Key points for
+strategy decisions:
 
-### Self-consumption (API mode 1)
-
-- PV power is used to supply load first, then charge the battery.
-- Surplus solar charges the battery. Only once battery is fully charged is power exported to grid.
-- When PV is less than load, battery discharges to support load until reserve SoC is reached.
-- Below reserve SoC, grid supplies the load.
-- PV power usage priority: Load > Battery > Grid.
-- Load energy source priority: Photovoltaic > Battery > Grid.
-- Battery charging source: **PV only** (battery does not charge from grid in this mode).
-
-### Backup (API mode 3)
-
-- Battery is charged to the user-set SoC for backup energy.
-- Batteries charge from PV first; if PV is insufficient, grid power is used.
-- When fully charged, the SoC difference above the reserve can still support load.
-- On power failure or grid outage, EP Cube seamlessly switches to backup power.
-- PV power usage priority: Load > Battery > Grid.
-- Load energy source priority: Photovoltaic > Battery > Grid.
-- Battery charging source: **PV > Grid** (battery can charge from grid in this mode).
-
-### Time of Use (API mode 2)
-
-- Owner defines up to 9 time slots: off-peak, peak, super peak, super off-peak.
-- Off-peak and super off-peak: battery charges from grid at low price.
-- Peak: behavior is consistent with Self-consumption mode.
-- Super peak: battery discharges to support load down to 5% SoC.
-- PV power usage priority: Load > Battery > Grid.
-- Load energy source priority: Photovoltaic > Battery > Grid.
-- Battery charging source: **PV only** (during peak/super peak).
-
-### Constraint: no grid charging allowed
-
-This installation is **not permitted to charge the battery from the grid**. This is a site constraint, not a hardware limitation.
-
-- Backup mode supports grid charging in EP Cube's documented hardware behavior. On this installation, grid charging is disabled in app settings. Re-verify after firmware or app changes.
-- Time of Use mode is not used by the controller because its built-in schedule and off-peak grid-charging behavior do not match this installation's control strategy.
-- Self-consumption is the primary operating mode because it charges from PV only.
+- Self-consumption: PV-only charging, reserve is a discharge floor
+- Backup: grid-charges to reach reserve, reserve is a target (not just a floor)
+- This installation must not charge from grid (site constraint)
 
 ### Controller actuator capabilities
 

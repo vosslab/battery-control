@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # re-export for backward compatibility with callers
 Action = battcontrol.strategy.Action
 DecisionResult = battcontrol.strategy.DecisionResult
-ACTION_MODE_MAP = battcontrol.strategy.ACTION_MODE_MAP
+TARGET_MODE_DISPLAY = battcontrol.strategy.TARGET_MODE_DISPLAY
 
 
 #============================================

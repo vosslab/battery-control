@@ -536,7 +536,7 @@ def main() -> None:
 	# save state
 	control_state.save()
 	# print summary line for cron log
-	mode_name = battcontrol.decision_engine.ACTION_MODE_MAP.get(result.action, "?")
+	mode_name = battcontrol.decision_engine.TARGET_MODE_DISPLAY.get(result.target_mode, result.target_mode)
 	_print_summary(result.action.value, mode_name, result.soc_floor, result.reason, dry_run)
 
 

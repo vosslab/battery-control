@@ -4,10 +4,23 @@
 
 ### Behavior or Interface Changes
 
-- Changed daylight B.3b strategy (no surplus, non-extreme price) to set backup
-  reserve to 100% instead of current SoC; this allows the battery to absorb solar
-  when load drops, rather than sending excess solar to grid; device-level
-  `allowChargingXiaGrid` flag prevents unwanted grid charging
+- Created [docs/EPCUBE_MODE_BEHAVIOR.md](docs/EPCUBE_MODE_BEHAVIOR.md) documenting
+  hardware behavior of each EP Cube mode (self-consumption, backup, TOU) with
+  details from the EP Cube 2.0 User Manual: charging source priorities, TOU
+  sub-mode behavior (off-peak grid charging to 100%, super peak discharge to 5%),
+  reserve semantics, grid charging observations, strategy implications, and
+  long-term storage guidance
+- Fixed mode display bug: `DecisionResult.__repr__` and `[LIVE]` summary now
+  show actual `target_mode` instead of inferring mode from action; previously
+  `discharge_disabled` always displayed "Backup" even when target was
+  self-consumption; replaced `ACTION_MODE_MAP` with `TARGET_MODE_DISPLAY`
+- Changed daylight B.3b strategy from backup mode to self-consumption mode
+  (reserve stays at current SoC); self-consumption charges from PV only so
+  solar surplus will charge the battery without grid charging; live test
+  needed to confirm discharge is blocked and solar capture works
+- Attempted and reverted backup mode at 100% reserve -- caused ~6.3kW grid
+  charging at 62% SoC; backup mode always grid-charges when reserve > SoC;
+  `allowChargingXiaGrid` toggle is TOU-only per the app UI
 
 ### Fixes and Maintenance
 

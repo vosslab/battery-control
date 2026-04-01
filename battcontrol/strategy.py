@@ -29,11 +29,10 @@ class Action(enum.Enum):
 	DISCHARGE_ENABLED = "discharge_enabled"
 	DISCHARGE_DISABLED = "discharge_disabled"
 
-# maps each action to its EP Cube mode name for logging
-ACTION_MODE_MAP = {
-	Action.CHARGE_FROM_SOLAR: "Self-consumption",
-	Action.DISCHARGE_ENABLED: "Self-consumption",
-	Action.DISCHARGE_DISABLED: "Backup",
+# maps target_mode strings to human-readable EP Cube mode names for logging
+TARGET_MODE_DISPLAY = {
+	"self_consumption": "Self-consumption",
+	"backup": "Backup",
 }
 
 
@@ -77,7 +76,7 @@ class DecisionResult:
 
 	#============================================
 	def __repr__(self) -> str:
-		mode_name = ACTION_MODE_MAP.get(self.action, "?")
+		mode_name = TARGET_MODE_DISPLAY.get(self.target_mode, self.target_mode)
 		return (
 			f"DecisionResult({self.action.value} | "
 			f"Mode: {mode_name} | reserve {self.soc_floor}% | "
@@ -223,17 +222,17 @@ def _daylight_logic(
 			price_segment=-1,
 			target_mode="self_consumption",
 		)
-	# B.3b: low price, no surplus -- set reserve 100% so battery absorbs solar when load drops
+	# B.3b: self-consumption at current SoC -- no grid charging, captures solar when surplus appears
 	logger.info(
-		"Low price, no surplus: reserve 100%% to capture solar, price %.1fc below extreme %dc",
-		comed_price_cents, extreme_threshold,
+		"Self-consumption hold: no surplus, price %.1fc below extreme %dc, reserve %d%%",
+		comed_price_cents, extreme_threshold, battery_soc,
 	)
 	return DecisionResult(
 		action=Action.DISCHARGE_DISABLED,
 		reason=(f"No surplus, price {comed_price_cents:.1f}c not extreme, "
-			f"reserve 100% to capture solar"),
-		soc_floor=100,
-		target_mode="backup",
+			f"self-consumption hold at {battery_soc}%"),
+		soc_floor=battery_soc,
+		target_mode="self_consumption",
 	)
 
 
