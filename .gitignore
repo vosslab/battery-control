@@ -1,6 +1,5 @@
-energy/
+battery_controller.log
 epcube/
-epcube-token/
 _*.py
 _*.sh
 report_*.txt
