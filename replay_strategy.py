@@ -173,7 +173,6 @@ def run_replay(
 			continue
 
 		# extract actual values
-		actual_start_soc = safe_int(row.get('start_soc', ''))
 		actual_grid_kwh = safe_float(row.get('grid_kwh', ''))
 		actual_solar_kwh = safe_float(row.get('solar_kwh', ''))
 		actual_load_kwh = safe_float(row.get('load_kwh', ''))
@@ -190,9 +189,11 @@ def run_replay(
 		load_power = estimate_power_from_kwh(actual_load_kwh)
 		comed_median = safe_float(row.get('comed_price_median', ''))
 
-		# call strategy.evaluate
+		# call strategy.evaluate with simulated SoC (not actual)
+		# this lets strategy decisions cascade across hours
+		replay_soc = int(round(simulated_soc))
 		decision = battcontrol.strategy.evaluate(
-			battery_soc=actual_start_soc,
+			battery_soc=replay_soc,
 			solar_power_watts=solar_power,
 			load_power_watts=load_power,
 			comed_price_cents=comed_price,

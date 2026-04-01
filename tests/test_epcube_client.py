@@ -11,6 +11,7 @@ REPO_ROOT = git_file_utils.get_repo_root()
 import sys
 sys.path.insert(0, REPO_ROOT)
 import battcontrol.epcube_client as epcube_client
+import battcontrol.strategy
 
 
 #============================================
@@ -253,9 +254,8 @@ class TestExecuteEpcube:
 	#============================================
 	def test_dry_run_backup_mode(self):
 		"""Dry run logs backup mode change without sending."""
-		from battcontrol.decision_engine import Action, DecisionResult
-		result = DecisionResult(
-			action=Action.DISCHARGE_DISABLED,
+		result = battcontrol.strategy.DecisionResult(
+			action=battcontrol.strategy.Action.DISCHARGE_DISABLED,
 			reason="test",
 			soc_floor=50,
 			target_mode="backup",
@@ -271,9 +271,8 @@ class TestExecuteEpcube:
 	#============================================
 	def test_no_client(self):
 		"""No client returns False."""
-		from battcontrol.decision_engine import Action, DecisionResult
-		result = DecisionResult(
-			action=Action.DISCHARGE_DISABLED,
+		result = battcontrol.strategy.DecisionResult(
+			action=battcontrol.strategy.Action.DISCHARGE_DISABLED,
 			reason="test",
 			soc_floor=50,
 			target_mode="backup",

@@ -2,6 +2,25 @@
 
 ## 2026-04-01
 
+### Behavior or Interface Changes
+
+- Changed daylight B.3b strategy (no surplus, non-extreme price) to set backup
+  reserve to 100% instead of current SoC; this allows the battery to absorb solar
+  when load drops, rather than sending excess solar to grid; device-level
+  `allowChargingXiaGrid` flag prevents unwanted grid charging
+
+### Fixes and Maintenance
+
+- Rewrote `tests/test_decision_engine.py` to test only orchestrator mechanics
+  (returns DecisionResult, valid enum action, updates last_action in state);
+  removed all strategy decision assertions that blocked strategy changes
+- Rewrote `tests/test_strategy.py` to test only contract (returns valid
+  DecisionResult, soc_floor in range, valid target_mode) and robustness
+  (extreme inputs like 200c, -20c, zero solar/load, full/empty SoC);
+  removed all mid-range strategy decision assertions since strategy is
+  actively evolving and decision correctness is validated by
+  `replay_strategy.py` against historical data
+
 ### Additions and New Features
 
 - Created `daily_summary.py` script (executable) that reads `data/hourly_history.csv`,

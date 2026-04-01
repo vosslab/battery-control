@@ -176,16 +176,16 @@ class HourlyLogger:
 		if grid_kwh is None or solar_kwh is None or load_kwh is None:
 			self.used_fallback = True
 
-		# Accumulate watt-hours, then convert to kWh
-		# (even if counters are present, for completeness)
+		# Accumulate power and convert to kWh
+		# watts * seconds / 3600 = Wh, then / 1000 = kWh
 		if grid_watts is not None:
-			self.power_accumulator["grid"] += grid_watts * interval_seconds / 3600.0
+			self.power_accumulator["grid"] += grid_watts * interval_seconds / 3600000.0
 
 		if solar_watts is not None:
-			self.power_accumulator["solar"] += solar_watts * interval_seconds / 3600.0
+			self.power_accumulator["solar"] += solar_watts * interval_seconds / 3600000.0
 
 		if load_watts is not None:
-			self.power_accumulator["load"] += load_watts * interval_seconds / 3600.0
+			self.power_accumulator["load"] += load_watts * interval_seconds / 3600000.0
 
 	#============================================
 	def _flush_hour(self, config: dict) -> None:

@@ -223,16 +223,16 @@ def _daylight_logic(
 			price_segment=-1,
 			target_mode="self_consumption",
 		)
-	# B.3b: preserve for evening
+	# B.3b: low price, no surplus -- set reserve 100% so battery absorbs solar when load drops
 	logger.info(
-		"Preserving for peak: no surplus, price %.1fc below extreme %dc",
+		"Low price, no surplus: reserve 100%% to capture solar, price %.1fc below extreme %dc",
 		comed_price_cents, extreme_threshold,
 	)
 	return DecisionResult(
 		action=Action.DISCHARGE_DISABLED,
 		reason=(f"No surplus, price {comed_price_cents:.1f}c not extreme, "
-			f"preserving for peak"),
-		soc_floor=battery_soc,
+			f"reserve 100% to capture solar"),
+		soc_floor=100,
 		target_mode="backup",
 	)
 

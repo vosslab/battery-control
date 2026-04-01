@@ -32,7 +32,7 @@ class TestLoadConfig:
 		assert config["peak_window_start"] == 16
 		assert config["peak_window_end"] == 22
 		assert config["extreme_price_threshold"] == 20
-		assert config["hysteresis_count"] == 2
+		assert config["reserve_soc_buffer_pct"] == 2
 
 	#============================================
 	def test_load_missing_file(self):
