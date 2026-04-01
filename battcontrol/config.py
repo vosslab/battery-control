@@ -14,9 +14,9 @@ import numpy
 DEFAULTS = {
 	"battery_capacity_kwh": 20.0,
 	# hard reserve: do not discharge below this SoC
-	"hard_reserve_pct": {"summer": 10, "winter": 20},
+	"hard_reserve_pct": {"summer": 10, "shoulder": 15, "winter": 20},
 	# afternoon target SoC before peak window
-	"afternoon_target_soc_pct": {"summer": 90, "winter": 70},
+	"afternoon_target_soc_pct": {"summer": 100, "shoulder": 100, "winter": 100},
 	# peak arbitrage window hours (24h format)
 	"peak_window_start": 16,
 	"peak_window_end": 22,
@@ -28,6 +28,12 @@ DEFAULTS = {
 			{"price_cents": 20, "soc_floor_pct": 20},
 			{"price_cents": 30, "soc_floor_pct": 10},
 		],
+		"shoulder": [
+			{"price_cents": 8, "soc_floor_pct": 55},
+			{"price_cents": 10, "soc_floor_pct": 38},
+			{"price_cents": 20, "soc_floor_pct": 25},
+			{"price_cents": 30, "soc_floor_pct": 15},
+		],
 		"winter": [
 			{"price_cents": 8, "soc_floor_pct": 60},
 			{"price_cents": 10, "soc_floor_pct": 45},
@@ -38,7 +44,7 @@ DEFAULTS = {
 	# extreme price threshold for daytime discharge override
 	"extreme_price_threshold": 20,
 	# conservative night floor when not in peak window
-	"night_floor_pct": {"summer": 25, "winter": 35},
+	"night_floor_pct": {"summer": 25, "shoulder": 30, "winter": 35},
 	# headroom band for near-full battery during solar surplus
 	"headroom_band_low": 85,
 	"headroom_band_high": 95,
@@ -79,17 +85,20 @@ def get_season(config: dict, now: datetime.datetime = None) -> str:
 		now: Current datetime (defaults to now).
 
 	Returns:
-		str: 'summer' or 'winter'.
+		str: 'summer', 'shoulder', or 'winter'.
 	"""
 	if now is None:
 		now = datetime.datetime.now()
 	season_setting = config.get("season", "auto")
-	if season_setting in ("summer", "winter"):
+	if season_setting in ("summer", "shoulder", "winter"):
 		return season_setting
-	# auto-detect: May through September is summer
+	# auto-detect based on month
+	# summer: May-Sep, shoulder: Mar-Apr + Oct-Nov, winter: Dec-Feb
 	month = now.month
 	if 5 <= month <= 9:
 		return "summer"
+	if month in (3, 4, 10, 11):
+		return "shoulder"
 	return "winter"
 
 
@@ -172,8 +181,8 @@ def get_seasonal_value(config: dict, key: str, season: str) -> int:
 
 	Args:
 		config: Configuration dictionary.
-		key: Config key that has summer/winter sub-keys.
-		season: 'summer' or 'winter'.
+		key: Config key that has summer/shoulder/winter sub-keys.
+		season: 'summer', 'shoulder', or 'winter'.
 
 	Returns:
 		int: The seasonal value.
@@ -213,7 +222,7 @@ def _get_sorted_anchors(config: dict, season: str) -> list:
 
 	Args:
 		config: Configuration dictionary.
-		season: 'summer' or 'winter'.
+		season: 'summer', 'shoulder', or 'winter'.
 
 	Returns:
 		list: Sorted list of anchor dicts.
@@ -237,7 +246,7 @@ def get_price_floor(config: dict, season: str, price_cents: float) -> int:
 
 	Args:
 		config: Configuration dictionary.
-		season: 'summer' or 'winter'.
+		season: 'summer', 'shoulder', or 'winter'.
 		price_cents: Current price in cents.
 
 	Returns:
@@ -265,7 +274,7 @@ def get_price_segment_index(config: dict, season: str, price_cents: float) -> in
 
 	Args:
 		config: Configuration dictionary.
-		season: 'summer' or 'winter'.
+		season: 'summer', 'shoulder', or 'winter'.
 		price_cents: Current price in cents.
 
 	Returns:
@@ -294,7 +303,7 @@ def get_price_segment_bounds(
 
 	Args:
 		config: Configuration dictionary.
-		season: 'summer' or 'winter'.
+		season: 'summer', 'shoulder', or 'winter'.
 		price_cents: Current price in cents.
 
 	Returns:

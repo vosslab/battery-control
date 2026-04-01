@@ -149,7 +149,7 @@ def _daylight_logic(
 		solar_power_watts: Current solar power in watts.
 		load_power_watts: Current house load in watts.
 		comed_price_cents: Current ComEd price in cents.
-		season: 'summer' or 'winter'.
+		season: 'summer', 'shoulder', or 'winter'.
 		config: Configuration dictionary.
 
 	Returns:
@@ -190,6 +190,18 @@ def _daylight_logic(
 			return DecisionResult(
 				action=Action.DISCHARGE_ENABLED,
 				reason=f"Creating headroom: SoC {battery_soc}% >= {band_high}%, extreme price",
+				soc_floor=band_low,
+				target_mode="self_consumption",
+			)
+		if battery_soc >= band_high and comed_price_cents < 0:
+			# negative price: absorb solar into battery instead of exporting at a loss
+			logger.info(
+				"Negative price headroom: SoC %d%% >= %d%%, price %.1fc negative",
+				battery_soc, band_high, comed_price_cents,
+			)
+			return DecisionResult(
+				action=Action.DISCHARGE_ENABLED,
+				reason=f"Negative price headroom: SoC {battery_soc}% >= {band_high}%, price {comed_price_cents:.1f}c",
 				soc_floor=band_low,
 				target_mode="self_consumption",
 			)
@@ -250,7 +262,7 @@ def _night_logic(
 	Args:
 		battery_soc: Current SoC percentage.
 		comed_price_cents: Current ComEd price in cents.
-		season: 'summer' or 'winter'.
+		season: 'summer', 'shoulder', or 'winter'.
 		current_time: Current datetime.
 		config: Configuration dictionary.
 
@@ -302,7 +314,7 @@ def _peak_logic(
 	Args:
 		battery_soc: Current SoC percentage.
 		comed_price_cents: Current ComEd price in cents.
-		season: 'summer' or 'winter'.
+		season: 'summer', 'shoulder', or 'winter'.
 		current_time: Current datetime.
 		config: Configuration dictionary.
 

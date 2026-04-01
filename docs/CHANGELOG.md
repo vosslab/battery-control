@@ -4,6 +4,21 @@
 
 ### Additions and New Features
 
+- Added shoulder season (Mar-Apr, Oct-Nov) to three-season model: summer
+  (May-Sep), shoulder (Mar-Apr, Oct-Nov), winter (Dec-Feb); previously April
+  was classified as winter which prevented aggressive solar charging
+- Raised summer `afternoon_target_soc_pct` from 90% to 100% (60kWh solar
+  production easily fills battery during cheap hours)
+- Set shoulder `afternoon_target_soc_pct` to 100% (same rationale, no AC spike)
+- Added shoulder defaults for all seasonal config values: `hard_reserve_pct` 15%,
+  `night_floor_pct` 30%, and new shoulder price floor anchors (midpoint between
+  summer and winter)
+- Updated [docs/STRATEGY.md](docs/STRATEGY.md) to document three-season model
+- Set `afternoon_target_soc_pct` to 100% for all seasons; charge to full whenever
+  solar is available, seasonal differences are in discharge floors and reserves
+- Added negative price headroom logic in daylight B.2b: when SoC >= 95% and price
+  is negative, discharge to 85% to absorb solar instead of exporting at a loss;
+  initial implementation, likely needs refinement with real negative price data
 - Updated [docs/EPCUBE_API_FIELDS.md](docs/EPCUBE_API_FIELDS.md) from fresh
   `--dump-raw` output at 10:00 AM: added 6 missing raw fields (`evPower`,
   `generatorPower`, `evLight`, `generatorLight`, `fromType`, `isNewDevice`),

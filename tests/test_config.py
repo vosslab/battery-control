@@ -99,10 +99,18 @@ class TestGetSeason:
 			assert config_mod.get_season(config, now) == "summer"
 
 	#============================================
-	def test_winter_months(self):
-		"""October through April are winter."""
+	def test_shoulder_months(self):
+		"""March, April, October, November are shoulder."""
 		config = {"season": "auto"}
-		for month in (1, 2, 3, 4, 10, 11, 12):
+		for month in (3, 4, 10, 11):
+			now = datetime.datetime(2025, month, 15)
+			assert config_mod.get_season(config, now) == "shoulder"
+
+	#============================================
+	def test_winter_months(self):
+		"""December through February are winter."""
+		config = {"season": "auto"}
+		for month in (1, 2, 12):
 			now = datetime.datetime(2025, month, 15)
 			assert config_mod.get_season(config, now) == "winter"
 
@@ -111,8 +119,10 @@ class TestGetSeason:
 		"""Manual season override ignores month."""
 		config_summer = {"season": "summer"}
 		config_winter = {"season": "winter"}
+		config_shoulder = {"season": "shoulder"}
 		january = datetime.datetime(2025, 1, 15)
 		assert config_mod.get_season(config_summer, january) == "summer"
+		assert config_mod.get_season(config_shoulder, january) == "shoulder"
 		july = datetime.datetime(2025, 7, 15)
 		assert config_mod.get_season(config_winter, july) == "winter"
 
@@ -245,6 +255,7 @@ class TestPriceFloor:
 		"""get_seasonal_value returns correct seasonal value."""
 		config = config_mod.DEFAULTS
 		assert config_mod.get_seasonal_value(config, "hard_reserve_pct", "summer") == 10
+		assert config_mod.get_seasonal_value(config, "hard_reserve_pct", "shoulder") == 15
 		assert config_mod.get_seasonal_value(config, "hard_reserve_pct", "winter") == 20
 
 
