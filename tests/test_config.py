@@ -29,8 +29,6 @@ class TestLoadConfig:
 		config_path = os.path.join(REPO_ROOT, "config_example.yml")
 		config = config_mod.load_config(config_path)
 		assert config["battery_capacity_kwh"] == 20.0
-		assert config["peak_window_start"] == 16
-		assert config["peak_window_end"] == 22
 		assert config["reserve_soc_buffer_pct"] == 2
 
 	#============================================
@@ -50,7 +48,6 @@ class TestLoadConfig:
 			# overridden value
 			assert config["battery_capacity_kwh"] == 15.0
 			# default values still present
-			assert config["peak_window_start"] == 16
 			assert config["hard_reserve_pct"]["summer"] == 10
 			assert config["hard_reserve_pct"]["winter"] == 20
 		finally:

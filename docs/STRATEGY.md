@@ -52,9 +52,9 @@ The controller uses three policy actions. Each determines intent, EP Cube mode, 
 
 Three seasons drive battery strategy, auto-detected by month:
 
-- **Summer** (May-Sep): maximize stored energy for evening A/C and peak temperatures. Target 100% SoC before peak hours whenever practical.
-- **Shoulder** (Mar-Apr, Oct-Nov): transitional months with mixed solar. Target 100% SoC. Slightly more conservative discharge floors than summer.
-- **Winter** (Dec-Feb): target 100% SoC but expect many days with zero solar production (snow, short days). More conservative discharge floors since refill is unreliable.
+- **Summer** (May-Sep): maximize stored energy for evening A/C. Charge to 100% from solar whenever practical.
+- **Shoulder** (Mar-Apr, Oct-Nov): transitional months with mixed solar. Charge to 100%. Slightly more conservative discharge floors than summer.
+- **Winter** (Dec-Feb): charge to 100% but expect many days with zero solar production (snow, short days). More conservative discharge floors since refill is unreliable.
 
 The controller implements its own tariff logic using ComEd real-time pricing rather than the EP Cube's built-in TOU schedule.
 
@@ -69,7 +69,7 @@ The controller also fetches `comedlib.getReasonableCutOff()`, a time-aware cutof
 - If predicted rate > cutoff: **conserve** (prices are high, export surplus to grid)
 - If predicted rate <= cutoff: **consume** (prices are low, charge battery from surplus)
 
-This cutoff is used in daylight logic (section B.2x) to decide whether solar surplus should charge the battery or export to the grid.
+This cutoff is the primary gate for discharge decisions in both daylight and night logic. Time-of-day effects come through the cutoff itself (which adjusts for solar peak hours, late night, and weekends), not through a separate peak-window state machine.
 
 ## Flow chart
 
@@ -90,44 +90,28 @@ Goal: charge from solar. Avoid discharging unless prices are above cutoff or you
 If you cannot measure load, approximate surplus by battery charging rate or net export if available.
 2. If Surplus > 0 (solar is excess)
   - 2x. If predicted price > usage cutoff (conserve mode): export surplus to grid instead of charging battery. Use price-to-SoC anchors for the discharge floor so the battery is ready to respond instantly if a load spike exceeds solar, without waiting up to 2 minutes for the next controller cycle. `DISCHARGE_ENABLED` with interpolated floor. Stop.
-  - 2a. If SoC < Afternoon Target SoC (100% all seasons)
-Then: `CHARGE_FROM_SOLAR` with target SoC as reserve. Stop.
-  - 2b. If SoC >= Afternoon Target SoC
+  - 2a. If SoC < 100%
+Then: `CHARGE_FROM_SOLAR` to fill battery. Stop.
+  - 2b. If SoC >= 100% (battery full)
 Then: create headroom only if needed. If battery is near full and price is above cutoff, `DISCHARGE_ENABLED` with interpolated price floor. If battery is near full and price is negative, also `DISCHARGE_ENABLED` with headroom band to absorb solar instead of exporting at a loss. Otherwise `CHARGE_FROM_SOLAR`. Stop.
 3. If Surplus <= 0 (solar not excess, likely clouds or high load)
   - 3a. If predicted price > usage cutoff: `DISCHARGE_ENABLED` with interpolated price floor. Stop.
   - 3b. Else: `DISCHARGE_DISABLED` to preserve SoC for evening. Stop.
 
-### C. Transition trigger
+### C. Night logic (no solar)
 
-If local time >= Peak Start (example 4:00pm) OR inverter solar power has been below a small threshold for 20 to 30 minutes (sun is going away)
-Then: switch to Peak logic (section E).
+Goal: preserve battery unless prices justify discharge.
 
-### D. Night logic (no solar refill)
+- If price > usage cutoff and SoC > Night Floor: `DISCHARGE_ENABLED` with interpolated price floor (clamped to at least Night Floor, example 35% winter, 30% shoulder, 25% summer).
+- Otherwise: `DISCHARGE_DISABLED` with Night Floor.
 
-Goal: preserve battery unless prices are painful.
+### Price-floor interpolation
 
-1. If time is inside Peak Window (example 4pm to 10pm)
-Then: go to Peak logic (section E).
-2. Else (late night, early morning)
-  - If price > usage cutoff: `DISCHARGE_ENABLED` with interpolated price floor (clamped to at least Night Floor).
-  - Otherwise: `DISCHARGE_DISABLED` with Night Floor (example 35% winter, 30% shoulder, 25% summer).
+When price > cutoff and discharge is allowed, the SoC floor is computed by piecewise linear interpolation between season-adjusted anchor points. Prices below the first anchor clamp to its floor; prices above the last anchor clamp to its floor. Between anchors the floor changes smoothly.
 
-### E. Peak logic (evening arbitrage)
+Higher prices produce lower floors (more aggressive discharge). Lower prices produce higher floors (more conservative).
 
-Goal: spend battery when prices are high, but preserve energy so you do not run out at 5pm.
-
-1. Determine Season Mode
-  - Summer mode: May to September, strong solar.
-  - Shoulder mode: March to April and October to November, mixed solar.
-  - Winter mode: December to February, weak or no solar.
-2. Interpolate SoC floor from price anchors (season adjusted)
-
-The floor is computed by piecewise linear interpolation between anchor points.
-Prices below the first anchor clamp to its floor; prices above the last anchor
-clamp to its floor. Between anchors the floor changes smoothly.
-
-Summer anchors (peak window):
+Summer anchors:
 
 | Price (cents) | SoC floor |
 | --- | --- |
@@ -136,7 +120,7 @@ Summer anchors (peak window):
 | 20 | 20% |
 | 30 | 10% |
 
-Shoulder anchors (peak window, between summer and winter):
+Shoulder anchors (between summer and winter):
 
 | Price (cents) | SoC floor |
 | --- | --- |
@@ -145,7 +129,7 @@ Shoulder anchors (peak window, between summer and winter):
 | 20 | 25% |
 | 30 | 15% |
 
-Winter anchors (peak window, more conservative):
+Winter anchors (more conservative):
 
 | Price (cents) | SoC floor |
 | --- | --- |
@@ -156,23 +140,10 @@ Winter anchors (peak window, more conservative):
 
 Example: summer price 9c is midway between 8c and 10c, so floor = 40%.
 
-3. Apply pacing heuristic (prevents early depletion)
-Compute "Usable Energy" = battery energy above the selected floor.
-Compute "Remaining Peak Hours" = hours until Peak End (example 10pm).
-Use usable energy / remaining hours as a guideline for selecting a conservative SoC floor. The controller adjusts the floor, not the discharge rate.
-  - If price is moderate: `DISCHARGE_ENABLED` with a higher floor to preserve energy for later.
-  - If price is very high: `DISCHARGE_ENABLED` with the lowest seasonal floor.
+### D. Command buffering
 
-4. Execute discharge decision
-  - If SoC > Floor AND price is above discharge threshold: `DISCHARGE_ENABLED` with floor as reserve SoC.
-  - Else: `DISCHARGE_DISABLED` to hold SoC.
-
-### F. Reliability tricks for 3-minute scheduler
-
-1. Hysteresis: require price to stay above a band boundary for 2 consecutive checks before switching bands. Same for dropping bands. This prevents flapping.
-2. Minimum hold time: once you enter Peak logic, stay there until Peak End even if price dips briefly.
-3. Token friction: do not send EP Cube mode commands unless the desired state has been stable for 2 to 3 cycles.
+The command buffer prevents flapping by requiring the desired EP Cube state to be stable before sending hardware commands. Minimum SoC change threshold and optional periodic resend are configurable. See the command buffer module for details.
 
 ## Summary
 
-The controller uses three policy actions (`CHARGE_FROM_SOLAR`, `DISCHARGE_ENABLED`, `DISCHARGE_DISABLED`) based on ComEd real-time pricing, solar power, and SoC. Each action maps to an EP Cube mode and a reserve SoC rule. The pacing heuristic guides floor selection, not discharge rate. The inverter handles actual power flow based on house load. Three seasons (summer, shoulder, winter) drive target SoC and discharge floor behavior. All seasons target 100% SoC when solar is available; seasons differ in discharge floors and reserves.
+The controller uses three policy actions (`CHARGE_FROM_SOLAR`, `DISCHARGE_ENABLED`, `DISCHARGE_DISABLED`) driven by predicted price vs cutoff, solar availability, and SoC. Each action maps to an EP Cube mode and a reserve SoC rule. The inverter handles actual power flow based on house load. Three seasons (summer, shoulder, winter) drive discharge floor behavior. All seasons charge to 100% from solar; seasons differ in discharge floors and reserves. Time-of-day effects come through the comedlib cutoff (which adjusts for solar peak hours, late night, and weekends), not through a separate peak-window routing state.

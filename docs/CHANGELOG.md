@@ -2,6 +2,24 @@
 
 ## 2026-04-01
 
+### Removals and Deprecations
+
+- Removed `_peak_logic()` and `_is_in_peak_window()` from strategy; peak-window
+  routing bypassed the comedlib cutoff check, causing discharge at cheap prices
+  (observed: 0.8c discharge when cutoff was 6.6c because peak anchors set floor
+  to 55% and SoC was 80%)
+- Removed `peak_window_start` and `peak_window_end` from config defaults and
+  `config_example.yml`; time-of-day effects now come through the comedlib
+  time-aware cutoff, not a separate peak-window state machine
+- Removed `afternoon_target_soc_pct` from config defaults and
+  `config_example.yml`; hardcoded to 100% in strategy since all seasons
+  already used 100%
+- Removed STRATEGY.md sections C (transition trigger), E (peak logic), and F
+  (hysteresis/hold-time); replaced with price-floor interpolation subsection
+  and command buffering note
+- Simplified strategy routing: no solar always routes to night logic, solar
+  available always routes to daylight logic; both gate discharge on price > cutoff
+
 ### Behavior or Interface Changes
 
 - Removed `extreme_price_threshold` (hard-coded 20c gate) from strategy, config,

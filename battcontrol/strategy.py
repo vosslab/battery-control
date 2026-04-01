@@ -114,23 +114,6 @@ def _compute_solar_surplus(solar_power_watts: float, load_power_watts: float) ->
 	return solar_power_watts - load_power_watts
 
 
-#============================================
-def _is_in_peak_window(current_time: datetime.datetime, config: dict) -> bool:
-	"""
-	Check if current time is within the peak arbitrage window.
-
-	Args:
-		current_time: Current datetime.
-		config: Configuration dictionary.
-
-	Returns:
-		bool: True if in peak window.
-	"""
-	hour = current_time.hour
-	start = config.get("peak_window_start", 16)
-	end = config.get("peak_window_end", 22)
-	return start <= hour < end
-
 
 #============================================
 def _daylight_logic(
@@ -158,9 +141,6 @@ def _daylight_logic(
 		DecisionResult: The daylight decision.
 	"""
 	surplus = _compute_solar_surplus(solar_power_watts, load_power_watts)
-	afternoon_target = battcontrol.config.get_seasonal_value(
-		config, "afternoon_target_soc_pct", season
-	)
 	logger.info(
 		"Daylight: surplus %.0fW (solar %.0fW - load %.0fW)",
 		surplus, solar_power_watts, load_power_watts,
@@ -191,16 +171,16 @@ def _daylight_logic(
 				price_segment=segment_idx,
 				target_mode="self_consumption",
 			)
-		if battery_soc < afternoon_target:
-			# B.2a: below afternoon target, let solar charge
+		if battery_soc < 100:
+			# B.2a: not full, let solar charge to 100%
 			logger.info(
-				"Charging from solar: SoC %d%% below afternoon target %d%%",
-				battery_soc, afternoon_target,
+				"Charging from solar: SoC %d%% below 100%%",
+				battery_soc,
 			)
 			return DecisionResult(
 				action=Action.CHARGE_FROM_SOLAR,
-				reason=f"Solar surplus, SoC {battery_soc}% < target {afternoon_target}%",
-				soc_floor=afternoon_target,
+				reason=f"Solar surplus, SoC {battery_soc}% < 100%, charging",
+				soc_floor=100,
 				target_mode="self_consumption",
 			)
 		# B.2b: at or above target, check headroom
@@ -234,15 +214,15 @@ def _daylight_logic(
 				soc_floor=band_low,
 				target_mode="self_consumption",
 			)
-		# not exporting or price is cheap, hold at target
+		# not exporting or price is cheap, hold at 100%
 		logger.info(
-			"At target: SoC %d%% >= target %d%%, price %.1fc <= cutoff %.1fc",
-			battery_soc, afternoon_target, comed_price_cents, comed_cutoff_cents,
+			"Full: SoC %d%%, price %.1fc <= cutoff %.1fc, holding",
+			battery_soc, comed_price_cents, comed_cutoff_cents,
 		)
 		return DecisionResult(
 			action=Action.CHARGE_FROM_SOLAR,
-			reason=f"Solar surplus, SoC {battery_soc}% >= target, holding",
-			soc_floor=afternoon_target,
+			reason=f"Solar surplus, SoC {battery_soc}% full, holding",
+			soc_floor=100,
 			target_mode="self_consumption",
 		)
 	# section B.3: no solar surplus
@@ -341,78 +321,6 @@ def _night_logic(
 	)
 
 
-#============================================
-def _peak_logic(
-	battery_soc: int,
-	comed_price_cents: float,
-	season: str,
-	current_time: datetime.datetime,
-	config: dict,
-) -> DecisionResult:
-	"""
-	Implement section E of STRATEGY.md: peak logic (evening arbitrage).
-
-	Args:
-		battery_soc: Current SoC percentage.
-		comed_price_cents: Current ComEd price in cents.
-		season: 'summer', 'shoulder', or 'winter'.
-		current_time: Current datetime.
-		config: Configuration dictionary.
-
-	Returns:
-		DecisionResult: The peak decision.
-	"""
-	# E.2: interpolate SoC floor from price anchors
-	soc_floor = battcontrol.config.get_price_floor(config, season, comed_price_cents)
-	segment_idx = battcontrol.config.get_price_segment_index(
-		config, season, comed_price_cents
-	)
-	bounds = battcontrol.config.get_price_segment_bounds(
-		config, season, comed_price_cents
-	)
-	# format segment bounds for logging
-	lo_str = f"{bounds[0]:.1f}" if bounds[0] is not None else "<min"
-	hi_str = f"{bounds[1]:.1f}" if bounds[1] is not None else ">max"
-	logger.info(
-		"Peak: price %.1fc in [%s, %s]c -> floor %d%%",
-		comed_price_cents, lo_str, hi_str, soc_floor,
-	)
-	# E.4: discharge decision
-	if battery_soc <= soc_floor:
-		# at or below floor, hold
-		logger.info(
-			"At floor: SoC %d%% <= %d%%, holding",
-			battery_soc, soc_floor,
-		)
-		return DecisionResult(
-			action=Action.DISCHARGE_DISABLED,
-			reason=(f"Peak: SoC {battery_soc}% <= floor {soc_floor}% "
-				f"(price {comed_price_cents:.1f}c)"),
-			soc_floor=soc_floor,
-			price_segment=segment_idx,
-			target_mode="backup",
-		)
-	# above floor: discharge enabled
-	peak_end = config.get("peak_window_end", 22)
-	remaining_hours = max(peak_end - current_time.hour, 1)
-	usable_pct = max(battery_soc - soc_floor, 0)
-	capacity = config.get("battery_capacity_kwh", 20.0)
-	usable_kwh = capacity * usable_pct / 100.0
-	logger.info(
-		"Discharge enabled: price %.1fc, "
-		"SoC %d%% above %d%% floor, %.1f kWh usable over %d hrs",
-		comed_price_cents,
-		battery_soc, soc_floor, usable_kwh, remaining_hours,
-	)
-	return DecisionResult(
-		action=Action.DISCHARGE_ENABLED,
-		reason=(f"Peak: SoC {battery_soc}% above "
-			f"{soc_floor}% floor, discharge enabled (price {comed_price_cents:.1f}c)"),
-		soc_floor=soc_floor,
-		price_segment=segment_idx,
-		target_mode="self_consumption",
-	)
-
 
 #============================================
 def evaluate(
@@ -483,32 +391,15 @@ def evaluate(
 		solar_tag, solar_power_watts, solar_threshold,
 	)
 	if not solar_available:
-		# no solar: night logic or peak logic
-		# check if in peak window
-		if _is_in_peak_window(current_time, config):
-			logger.info("Entering peak logic")
-			result = _peak_logic(
-				battery_soc, comed_price_cents, season, current_time, config
-			)
-		else:
-			logger.info("Entering night logic")
-			result = _night_logic(
-				battery_soc, comed_price_cents, comed_cutoff_cents,
-				season, current_time, config
-			)
-		logger.info("Decision: %s", result)
-		return result
-	# solar is available
-	# Section C: solar available routing. Time of day takes priority over solar
-	# fading, so check peak window first.
-	if _is_in_peak_window(current_time, config):
-		logger.info("Solar available but in peak window, using peak logic")
-		result = _peak_logic(
-			battery_soc, comed_price_cents, season, current_time, config
+		# no solar: night logic (price vs cutoff gates discharge)
+		logger.info("Entering night logic")
+		result = _night_logic(
+			battery_soc, comed_price_cents, comed_cutoff_cents,
+			season, current_time, config
 		)
 		logger.info("Decision: %s", result)
 		return result
-	# section B: daylight logic
+	# solar is available: daylight logic (price vs cutoff gates discharge)
 	logger.info("Entering daylight logic")
 	result = _daylight_logic(
 		battery_soc, solar_power_watts, load_power_watts,

@@ -15,12 +15,7 @@ DEFAULTS = {
 	"battery_capacity_kwh": 20.0,
 	# hard reserve: do not discharge below this SoC
 	"hard_reserve_pct": {"summer": 10, "shoulder": 15, "winter": 20},
-	# afternoon target SoC before peak window
-	"afternoon_target_soc_pct": {"summer": 100, "shoulder": 100, "winter": 100},
-	# peak arbitrage window hours (24h format)
-	"peak_window_start": 16,
-	"peak_window_end": 22,
-	# price floor anchors for piecewise linear interpolation during peak window
+	# price floor anchors for piecewise linear interpolation when price > cutoff
 	"price_floor_anchors": {
 		"summer": [
 			{"price_cents": 8, "soc_floor_pct": 50},

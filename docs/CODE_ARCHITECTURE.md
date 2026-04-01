@@ -100,7 +100,7 @@ Key test files:
 - **Add a new actuator**: create a module under `battcontrol/`, call it from
   `battery_controller.py` alongside the EP Cube and WeMo actuators.
 - **Change decision logic**: modify the relevant section function in
-  `decision_engine.py` (`_daylight_logic`, `_night_logic`, `_peak_logic`).
+  `strategy.py` (`_daylight_logic`, `_night_logic`).
 
 ## Known gaps
 

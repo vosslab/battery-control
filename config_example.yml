@@ -11,17 +11,7 @@ hard_reserve_pct:
   summer: 10
   winter: 20
 
-# Target SoC to reach from solar before peak window
-afternoon_target_soc_pct:
-  summer: 90
-  winter: 70
-
-# Peak arbitrage window (24-hour format)
-# Battery will discharge during high prices in this window
-peak_window_start: 16  # 4:00 PM
-peak_window_end: 22    # 10:00 PM
-
-# Price floor anchors for piecewise linear interpolation during peak window
+# Price floor anchors for piecewise linear interpolation when price > cutoff
 # Floor is linearly interpolated between anchors; clamped outside range
 # Lower floor = more aggressive discharge at that price level
 price_floor_anchors:
@@ -36,7 +26,7 @@ price_floor_anchors:
     - { price_cents: 20, soc_floor_pct: 30 }
     - { price_cents: 30, soc_floor_pct: 20 }
 
-# Conservative night floor (outside peak window)
+# Conservative night floor (no solar available)
 night_floor_pct:
   summer: 25
   winter: 35
