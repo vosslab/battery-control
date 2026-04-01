@@ -87,6 +87,10 @@ The controller uses three policy actions. Each determines intent, EP Cube mode, 
 
 The controller implements its own tariff logic using ComEd real-time pricing rather than the EP Cube's built-in TOU schedule.
 
+### Price input: worst-case predictor
+
+The price fed to the decision engine is not the instantaneous ComEd rate. It comes from `comedlib.getPredictedRate()`, which is intentionally a pessimistic (worst-case) estimator. It clamps negative and near-zero prices to 1.0 cent, floors the trend slope at +0.1 (never predicts a declining trend), computes three independent estimates (mean plus standard deviation, linear-regression slope extrapolation, and a weighted average of max/mean/recent), and returns the highest of the three. This conservative bias means the controller sees prices as higher than they may actually be, which prevents discharging the battery on a brief price dip that reverses shortly after.
+
 ## Flow chart
 
 ### A. Guards (always run first)

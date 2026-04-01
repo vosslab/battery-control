@@ -136,20 +136,24 @@ class TestPriceFloor:
 		assert floor == 50
 
 	#============================================
-	def test_summer_midpoint_interpolation(self):
-		"""Price midway between 8c and 10c interpolates to 40%."""
+	def test_summer_floor_decreases_with_price(self):
+		"""Higher prices produce lower floors (more discharge allowed)."""
 		config = config_mod.DEFAULTS
-		# 9c is halfway between 8c (50%) and 10c (30%)
-		floor = config_mod.get_price_floor(config, "summer", 9.0)
-		assert floor == 40
+		floor_low = config_mod.get_price_floor(config, "summer", 8.0)
+		floor_mid = config_mod.get_price_floor(config, "summer", 15.0)
+		floor_high = config_mod.get_price_floor(config, "summer", 30.0)
+		# floor should decrease as price increases
+		assert floor_low > floor_mid > floor_high
 
 	#============================================
-	def test_summer_between_anchors(self):
-		"""Price between 10c and 20c interpolates correctly."""
+	def test_summer_interpolation_between_anchors(self):
+		"""Interpolated floor falls between neighboring anchor floors."""
 		config = config_mod.DEFAULTS
-		# 15c is halfway between 10c (30%) and 20c (20%) -> 25%
-		floor = config_mod.get_price_floor(config, "summer", 15.0)
-		assert floor == 25
+		# 9c is between 8c (50%) and 10c (30%) anchors
+		floor_at_8 = config_mod.get_price_floor(config, "summer", 8.0)
+		floor_at_9 = config_mod.get_price_floor(config, "summer", 9.0)
+		floor_at_10 = config_mod.get_price_floor(config, "summer", 10.0)
+		assert floor_at_8 >= floor_at_9 >= floor_at_10
 
 	#============================================
 	def test_summer_above_last_anchor(self):

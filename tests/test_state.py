@@ -147,3 +147,34 @@ class TestControlState:
 		assert d["price_segment_counter"] == 2
 		assert d["current_price_segment"] == 1
 		assert "token_expired" in d
+
+	#============================================
+	def test_reset_daily_clears_peak_mode(self):
+		"""reset_daily clears peak mode for a new day."""
+		cs = state_mod.ControlState()
+		cs.peak_mode_active = True
+		cs.peak_mode_entered_at = "2025-07-15T16:00:00"
+		cs.reset_daily()
+		assert cs.peak_mode_active is False
+		assert cs.peak_mode_entered_at is None
+
+	#============================================
+	def test_round_trip_preserves_all_fields(self, tmp_path):
+		"""Save then load preserves all state fields."""
+		state_file = str(tmp_path / "state.json")
+		cs = state_mod.ControlState(state_file)
+		cs.price_segment_counter = 5
+		cs.current_price_segment = 2
+		cs.last_action = "discharge_enabled"
+		cs.peak_mode_active = True
+		cs.peak_mode_entered_at = "2025-07-15T16:00:00"
+		cs.token_expired = True
+		cs.save()
+		# load into a fresh instance
+		cs2 = state_mod.ControlState(state_file)
+		cs2.load()
+		assert cs2.price_segment_counter == 5
+		assert cs2.current_price_segment == 2
+		assert cs2.last_action == "discharge_enabled"
+		assert cs2.peak_mode_active is True
+		assert cs2.token_expired is True

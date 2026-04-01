@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 #============================================
-def _get_base_url(region: str) -> str:
+def get_base_url(region: str) -> str:
 	"""
 	Get the API base URL for a region.
 
@@ -43,6 +43,24 @@ def _get_base_url(region: str) -> str:
 		str: Base URL for the region.
 	"""
 	return BASE_URLS.get(region.upper(), BASE_URLS["EU"])
+
+
+#============================================
+def get_headers() -> dict:
+	"""
+	Build standard HTTP headers for EP Cube API requests.
+
+	Returns:
+		dict: Headers dictionary with spoofed User-Agent.
+	"""
+	headers = {
+		"accept": "*/*",
+		"content-type": "application/json",
+		"user-agent": USER_AGENT,
+		"accept-language": "en-US",
+		"accept-encoding": "gzip, deflate, br",
+	}
+	return headers
 
 
 #============================================
@@ -66,7 +84,7 @@ class EpcubeClient:
 		self.token = token
 		self.region = region
 		self.device_sn = device_sn
-		self.base_url = _get_base_url(region)
+		self.base_url = get_base_url(region)
 		self._device_id = None
 		# stores the last raw API response for debugging
 		self.last_raw_data = None

@@ -6,8 +6,8 @@ import datetime
 import logging
 
 # local repo modules
-import battcontrol.config as config_mod
-import battcontrol.state as state_mod
+import battcontrol.config
+import battcontrol.state
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ class DecisionResult:
 		soc_floor: Reserve SoC percentage for this decision.
 		price_segment: Segment index from interpolation anchors (-1 = sentinel).
 		target_mode: EP Cube mode ('self_consumption' or 'backup').
+		stabilized: True when action has been stable long enough to act on.
 	"""
 
 	#============================================
@@ -71,6 +72,7 @@ class DecisionResult:
 		self.soc_floor = soc_floor
 		self.price_segment = price_segment
 		self.target_mode = target_mode
+		self.stabilized = False
 
 	#============================================
 	def __repr__(self) -> str:
@@ -134,7 +136,7 @@ def _is_in_peak_window(current_time: datetime.datetime, config: dict) -> bool:
 def _should_transition_to_peak(
 	current_time: datetime.datetime,
 	solar_power_watts: float,
-	control_state: state_mod.ControlState,
+	control_state: battcontrol.state.ControlState,
 	config: dict,
 ) -> bool:
 	"""
@@ -176,42 +178,6 @@ def _should_transition_to_peak(
 
 
 #============================================
-def _compute_pacing(
-	battery_soc: int,
-	soc_floor: int,
-	current_time: datetime.datetime,
-	config: dict,
-) -> float:
-	"""
-	Compute pacing guideline for floor selection (internal heuristic only).
-
-	This value is used to inform floor choice, not to control discharge rate.
-	The EP Cube does not support rate limiting.
-
-	Args:
-		battery_soc: Current battery state of charge percentage.
-		soc_floor: Target SoC floor percentage.
-		current_time: Current datetime.
-		config: Configuration dictionary.
-
-	Returns:
-		float: Estimated kWh available per remaining hour.
-	"""
-	capacity = config.get("battery_capacity_kwh", 20.0)
-	peak_end = config.get("peak_window_end", 22)
-	# compute usable energy above floor
-	usable_pct = max(battery_soc - soc_floor, 0)
-	usable_kwh = capacity * usable_pct / 100.0
-	# compute remaining peak hours
-	remaining_hours = peak_end - current_time.hour
-	if remaining_hours <= 0:
-		remaining_hours = 1
-	# spread remaining energy over remaining hours
-	max_kwh = usable_kwh / remaining_hours
-	return max_kwh
-
-
-#============================================
 def _daylight_logic(
 	battery_soc: int,
 	solar_power_watts: float,
@@ -235,7 +201,7 @@ def _daylight_logic(
 		DecisionResult: The daylight decision.
 	"""
 	surplus = _compute_solar_surplus(solar_power_watts, load_power_watts)
-	afternoon_target = config_mod.get_seasonal_value(config, "afternoon_target_soc_pct", season)
+	afternoon_target = battcontrol.config.get_seasonal_value(config, "afternoon_target_soc_pct", season)
 	extreme_threshold = config.get("extreme_price_threshold", 20)
 	logger.info(
 		"Daylight: surplus %.0fW (solar %.0fW - load %.0fW)",
@@ -284,7 +250,7 @@ def _daylight_logic(
 	# section B.3: no solar surplus
 	if comed_price_cents >= extreme_threshold:
 		# B.3a: extreme price override
-		extreme_floor = config_mod.get_seasonal_value(config, "hard_reserve_pct", season)
+		extreme_floor = battcontrol.config.get_seasonal_value(config, "hard_reserve_pct", season)
 		logger.info(
 			"Extreme price override: %.1fc >= %dc, discharging to floor %d%%",
 			comed_price_cents, extreme_threshold, extreme_floor,
@@ -331,7 +297,7 @@ def _night_logic(
 		DecisionResult: The night decision.
 	"""
 	extreme_threshold = config.get("extreme_price_threshold", 20)
-	night_floor = config_mod.get_seasonal_value(config, "night_floor_pct", season)
+	night_floor = battcontrol.config.get_seasonal_value(config, "night_floor_pct", season)
 	# D.2: discharge only if extreme price and above night floor
 	if comed_price_cents >= extreme_threshold and battery_soc > night_floor:
 		logger.info(
@@ -365,7 +331,7 @@ def _peak_logic(
 	season: str,
 	current_time: datetime.datetime,
 	config: dict,
-	control_state: state_mod.ControlState,
+	control_state: battcontrol.state.ControlState,
 ) -> DecisionResult:
 	"""
 	Implement section E of STRATEGY.md: peak logic (evening arbitrage).
@@ -386,9 +352,9 @@ def _peak_logic(
 		control_state.peak_mode_active = True
 		control_state.peak_mode_entered_at = current_time.isoformat()
 	# E.2: interpolate SoC floor from price anchors
-	soc_floor = config_mod.get_price_floor(config, season, comed_price_cents)
-	segment_idx = config_mod.get_price_segment_index(config, season, comed_price_cents)
-	bounds = config_mod.get_price_segment_bounds(config, season, comed_price_cents)
+	soc_floor = battcontrol.config.get_price_floor(config, season, comed_price_cents)
+	segment_idx = battcontrol.config.get_price_segment_index(config, season, comed_price_cents)
+	bounds = battcontrol.config.get_price_segment_bounds(config, season, comed_price_cents)
 	# format segment bounds for logging
 	lo_str = f"{bounds[0]:.1f}" if bounds[0] is not None else "<min"
 	hi_str = f"{bounds[1]:.1f}" if bounds[1] is not None else ">max"
@@ -396,8 +362,6 @@ def _peak_logic(
 		"Peak: price %.1fc in [%s, %s]c -> floor %d%%",
 		comed_price_cents, lo_str, hi_str, soc_floor,
 	)
-	# E.3: compute pacing guideline (used for logging, not rate control)
-	_compute_pacing(battery_soc, soc_floor, current_time, config)
 	# E.4: discharge decision
 	if battery_soc <= soc_floor:
 		# at or below floor, hold
@@ -442,7 +406,7 @@ def decide(
 	comed_price_cents: float,
 	comed_median_cents: float,
 	config: dict,
-	control_state: state_mod.ControlState,
+	control_state: battcontrol.state.ControlState,
 	current_time: datetime.datetime = None,
 ) -> DecisionResult:
 	"""
@@ -464,9 +428,9 @@ def decide(
 	if current_time is None:
 		current_time = datetime.datetime.now()
 	# determine season
-	season = config_mod.get_season(config, current_time)
+	season = battcontrol.config.get_season(config, current_time)
 	# section A: guards
-	hard_reserve = config_mod.get_seasonal_value(config, "hard_reserve_pct", season)
+	hard_reserve = battcontrol.config.get_seasonal_value(config, "hard_reserve_pct", season)
 	# log key inputs for reasoning trace
 	logger.info(
 		"Inputs: SoC %d%% | Price %.1fc | Solar %.0fW | Load %.0fW | Hour %d | Season %s",
@@ -541,12 +505,14 @@ def decide(
 def _apply_hysteresis(
 	result: DecisionResult,
 	config: dict,
-	control_state: state_mod.ControlState,
+	control_state: battcontrol.state.ControlState,
 ) -> None:
 	"""
 	Apply hysteresis and token friction to a decision result.
 
-	Modifies the result in-place if hysteresis conditions are not met.
+	Updates control_state counters and sets result.stabilized to True when
+	the action has been stable long enough to act on. The controller uses
+	stabilized to decide whether to issue hardware commands.
 
 	Args:
 		result: Decision result to potentially modify.
@@ -563,7 +529,6 @@ def _apply_hysteresis(
 				"Segment changed to %d (%d/%d checks needed)",
 				result.price_segment, control_state.price_segment_counter, hysteresis_count,
 			)
-		# if segment just changed and not enough consecutive checks, log it
 		elif control_state.price_segment_counter < hysteresis_count:
 			logger.debug(
 				"Hysteresis: segment %d has %d/%d consecutive checks",
@@ -571,8 +536,10 @@ def _apply_hysteresis(
 			)
 	# track action stability for token friction
 	control_state.update_action(result.action.value)
-	if control_state.action_stable_count < friction_count:
-		logger.debug(
-			"Token friction: action %s stable for %d/%d cycles",
+	if control_state.action_stable_count >= friction_count:
+		result.stabilized = True
+	else:
+		logger.info(
+			"Token friction: action %s stable for %d/%d cycles, waiting",
 			result.action.value, control_state.action_stable_count, friction_count
 		)

@@ -9,13 +9,16 @@ import logging
 import argparse
 import datetime
 
+# PIP3 modules
+import requests
+
 # local repo modules
-import battcontrol.config as config_mod
-import battcontrol.state as state_mod
-import battcontrol.decision_engine as decision_engine
-import battcontrol.epcube_client as epcube_mod
-import battcontrol.wemo_actuator as wemo_mod
-import epcube_get_token
+import battcontrol.config
+import battcontrol.state
+import battcontrol.decision_engine
+import battcontrol.epcube_client
+import battcontrol.wemo_actuator
+import battcontrol.epcube_login
 
 logger = logging.getLogger(__name__)
 
@@ -117,15 +120,16 @@ def _fetch_comed_price() -> tuple:
 	try:
 		import battcontrol.comedlib
 		comlib = battcontrol.comedlib.ComedLib()
+		# getPredictedRate() is a worst-case estimator, not the instantaneous rate
+		# (see docs/STRATEGY.md "Price input: worst-case predictor")
 		predicted_price = comlib.getPredictedRate()
-		current_price = comlib.getCurrentComedRate()
 		median_price, _ = comlib.getMedianComedRate()
 		logger.info(
 			"ComEd price: predicted %.2fc, current %.2fc, median %.2fc",
-			predicted_price, current_price, median_price,
+			predicted_price, comlib.getCurrentComedRate(), median_price,
 		)
 		return predicted_price, median_price
-	except Exception as err:
+	except (RuntimeError, ValueError, requests.RequestException) as err:
 		logger.error("Failed to fetch ComEd price: %s", err)
 		return None, None
 
@@ -146,7 +150,7 @@ def _has_auth_credentials(config: dict) -> bool:
 
 
 #============================================
-def _auto_renew_token(config: dict, control_state: state_mod.ControlState) -> str | None:
+def _auto_renew_token(config: dict, control_state: battcontrol.state.ControlState) -> str | None:
 	"""
 	Attempt to auto-renew the EP Cube token using stored credentials.
 
@@ -165,7 +169,7 @@ def _auto_renew_token(config: dict, control_state: state_mod.ControlState) -> st
 	region = config.get("epcube_region", "US")
 	logger.info("Attempting auto-renewal of EP Cube token for region %s", region)
 	# call the CAPTCHA solver and login
-	new_token = epcube_get_token.generate_token(username, password, region)
+	new_token = battcontrol.epcube_login.generate_token(username, password, region)
 	if new_token is None:
 		logger.warning(
 			"Auto-renewal failed. "
@@ -175,7 +179,7 @@ def _auto_renew_token(config: dict, control_state: state_mod.ControlState) -> st
 	# save the new token to the token file
 	token_file = config.get("epcube_token_file", "")
 	if token_file:
-		token_path = epcube_get_token.write_token(new_token, token_file)
+		token_path = battcontrol.epcube_login.write_token(new_token, token_file)
 		logger.info("New token saved to %s", token_path)
 	# update config in memory
 	config["epcube_token"] = new_token
@@ -185,7 +189,107 @@ def _auto_renew_token(config: dict, control_state: state_mod.ControlState) -> st
 
 
 #============================================
-def _fetch_epcube_data(config: dict, control_state: state_mod.ControlState) -> tuple:
+def _ensure_valid_token(
+	config: dict,
+	control_state: battcontrol.state.ControlState,
+) -> str | None:
+	"""
+	Return a valid EP Cube token, attempting auto-renewal if needed.
+
+	Checks in order: current token in config, known-expired flag in state,
+	and auto-renewal via stored credentials. Returns None with appropriate
+	logging if no valid token can be obtained.
+
+	Args:
+		config: Configuration dictionary.
+		control_state: Control state for token tracking.
+
+	Returns:
+		str: A valid token string, or None if unavailable.
+	"""
+	token = config.get("epcube_token", "")
+	has_creds = _has_auth_credentials(config)
+	# no token at all -- try generating one
+	if not token:
+		if has_creds:
+			logger.info("No token file found, attempting auto-generation")
+			token = _auto_renew_token(config, control_state)
+		if not token:
+			if has_creds:
+				logger.warning("No token and auto-generation failed. "
+					"Run epcube_get_token.py manually.")
+			else:
+				logger.info("No EP Cube token or auth file configured")
+			return None
+		# auto-generation succeeded, token is fresh
+		return token
+	# token exists but is known expired -- try renewal
+	if control_state.token_expired:
+		expired_at = control_state.token_expired_at or "unknown"
+		if has_creds:
+			logger.info("Token expired at %s, attempting auto-renewal", expired_at)
+			renewed = _auto_renew_token(config, control_state)
+			if renewed:
+				return renewed
+			logger.warning("Token expired and auto-renewal failed. "
+				"Run epcube_get_token.py manually.")
+			return None
+		logger.warning(
+			"Token expired at %s. No auth file configured. "
+			"Run epcube_get_token.py to regenerate.",
+			expired_at,
+		)
+		return None
+	# token exists and not known expired
+	return token
+
+
+#============================================
+def _try_renew_after_rejection(
+	config: dict,
+	control_state: battcontrol.state.ControlState,
+) -> tuple:
+	"""
+	Handle token rejection (401) by attempting one renewal and retry.
+
+	Args:
+		config: Configuration dictionary.
+		control_state: Control state for token tracking.
+
+	Returns:
+		tuple: (device_data_dict, epcube_client) or (None, None) on failure.
+	"""
+	has_creds = _has_auth_credentials(config)
+	if not has_creds:
+		control_state.mark_token_expired()
+		logger.warning("Token rejected by EP Cube. No auth file configured. "
+			"Run epcube_get_token.py to regenerate.")
+		return None, None
+	logger.info("Token rejected by API, attempting auto-renewal")
+	renewed = _auto_renew_token(config, control_state)
+	if not renewed:
+		control_state.mark_token_expired()
+		logger.warning("Token rejected and auto-renewal failed. "
+			"Run epcube_get_token.py manually.")
+		return None, None
+	# retry once with the new token
+	region = config.get("epcube_region", "US")
+	device_sn = config.get("epcube_device_sn", "")
+	client = battcontrol.epcube_client.EpcubeClient(renewed, region, device_sn)
+	try:
+		device_data = client.get_device_data()
+	except RuntimeError as err:
+		logger.error("EP Cube API error after renewal: %s", err)
+		return None, None
+	if device_data is None:
+		logger.error("EP Cube still rejecting after token renewal")
+		control_state.mark_token_expired()
+		return None, None
+	return device_data, client
+
+
+#============================================
+def _fetch_epcube_data(config: dict, control_state: battcontrol.state.ControlState) -> tuple:
 	"""
 	Fetch EP Cube device data.
 
@@ -199,84 +303,24 @@ def _fetch_epcube_data(config: dict, control_state: state_mod.ControlState) -> t
 	Returns:
 		tuple: (device_data_dict, epcube_client) or (None, None) on failure.
 	"""
-	token = config.get("epcube_token", "")
-	device_sn = config.get("epcube_device_sn", "")
-	has_creds = _has_auth_credentials(config)
-	# track whether we already attempted renewal this run (prevent loops)
-	already_renewed = False
-	# if no token, try auto-renewal before giving up
+	token = _ensure_valid_token(config, control_state)
 	if not token:
-		if has_creds:
-			logger.info("No token file found, attempting auto-generation")
-			token = _auto_renew_token(config, control_state)
-			already_renewed = True
-		if not token:
-			if has_creds:
-				logger.warning("No token and auto-generation failed. "
-					"Run epcube_get_token.py manually.")
-			else:
-				logger.info("No EP Cube token or auth file configured")
-			return None, None
-	# if token is known to be expired, try auto-renewal
-	if control_state.token_expired:
-		expired_at = control_state.token_expired_at or "unknown"
-		if has_creds and not already_renewed:
-			logger.info("Token expired at %s, attempting auto-renewal", expired_at)
-			renewed = _auto_renew_token(config, control_state)
-			already_renewed = True
-			if renewed:
-				token = renewed
-			else:
-				logger.warning("Token expired and auto-renewal failed. "
-					"Run epcube_get_token.py manually.")
-				return None, None
-		elif not has_creds:
-			logger.warning(
-				"Token expired at %s. No auth file configured. "
-				"Run epcube_get_token.py to regenerate.",
-				expired_at,
-			)
-			return None, None
+		return None, None
 	region = config.get("epcube_region", "US")
-	client = epcube_mod.EpcubeClient(token, region, device_sn)
+	device_sn = config.get("epcube_device_sn", "")
+	client = battcontrol.epcube_client.EpcubeClient(token, region, device_sn)
 	try:
 		device_data = client.get_device_data()
 	except RuntimeError as err:
 		logger.error("EP Cube API error: %s", err)
 		return None, None
+	# token rejected (likely 401), try one renewal
 	if device_data is None:
-		# likely token rejected (401), try one renewal if we have not already
-		if has_creds and not already_renewed:
-			logger.info("Token rejected by API, attempting auto-renewal")
-			renewed = _auto_renew_token(config, control_state)
-			if renewed:
-				# retry once with the new token
-				client = epcube_mod.EpcubeClient(renewed, region, device_sn)
-				try:
-					device_data = client.get_device_data()
-				except RuntimeError as err:
-					logger.error("EP Cube API error after renewal: %s", err)
-					return None, None
-				if device_data is None:
-					logger.error("EP Cube still rejecting after token renewal")
-					control_state.mark_token_expired()
-					return None, None
-			else:
-				control_state.mark_token_expired()
-				logger.warning("Token rejected and auto-renewal failed. "
-					"Run epcube_get_token.py manually.")
-				return None, None
-		else:
-			control_state.mark_token_expired()
-			if already_renewed:
-				logger.warning("Freshly generated token was rejected by EP Cube")
-			else:
-				logger.warning("Token rejected by EP Cube. No auth file configured. "
-					"Run epcube_get_token.py to regenerate.")
+		device_data, client = _try_renew_after_rejection(config, control_state)
+		if device_data is None:
 			return None, None
 	# token is working
 	control_state.mark_token_success()
-	# check token age warning
 	_check_token_age(control_state, config)
 	logger.info(
 		"EP Cube: SoC=%d%%, Solar=%.0fW, Grid=%.0fW, "
@@ -294,7 +338,7 @@ def _fetch_epcube_data(config: dict, control_state: state_mod.ControlState) -> t
 
 
 #============================================
-def _check_token_age(control_state: state_mod.ControlState, config: dict) -> None:
+def _check_token_age(control_state: battcontrol.state.ControlState, config: dict) -> None:
 	"""
 	Check if the EP Cube token is nearing expiration.
 
@@ -354,6 +398,30 @@ def _dump_raw_payload(raw_data: dict, normalized: dict) -> None:
 
 
 #============================================
+def _select_load_source(epcube_data: dict) -> float:
+	"""
+	Select the best load power source from EP Cube data.
+
+	Prefers smartHomePower (total house load) over backUpPower (backup
+	circuits only). Falls back to backUpPower when smartHomePower is zero
+	or unavailable.
+
+	Args:
+		epcube_data: Normalized EP Cube device data dictionary.
+
+	Returns:
+		float: Load power in watts.
+	"""
+	smart_home_load = epcube_data.get("smart_home_power_watts", 0)
+	backup_load = epcube_data.get("backup_power_watts", 0)
+	if smart_home_load > 0:
+		logger.info("Load source: smartHomePower (%.0fW)", smart_home_load)
+		return smart_home_load
+	logger.info("Load source: backUpPower fallback (%.0fW)", backup_load)
+	return backup_load
+
+
+#============================================
 def main() -> None:
 	"""
 	Main entry point for the battery controller.
@@ -367,7 +435,7 @@ def main() -> None:
 			f"Config file not found: {args.config_file}\n"
 			f"Copy config_example.yml to config.yml or pass -c <path>"
 		)
-	config = config_mod.load_config(args.config_file)
+	config = battcontrol.config.load_config(args.config_file)
 	# override dry_run from CLI
 	dry_run = args.dry_run
 	if not dry_run:
@@ -377,7 +445,7 @@ def main() -> None:
 	# load state
 	state_path = config.get("state_file_path")
 	# default comes from config.DEFAULTS which uses tempfile.gettempdir()
-	control_state = state_mod.ControlState(state_path)
+	control_state = battcontrol.state.ControlState(state_path)
 	control_state.load()
 	# reset daily state if needed (midnight rollover)
 	if control_state.peak_mode_entered_at:
@@ -407,17 +475,9 @@ def main() -> None:
 		return
 	battery_soc = epcube_data.get("battery_soc", 0)
 	solar_power = epcube_data.get("solar_power_watts", 0)
-	# select load source: prefer smartHomePower, fall back to backUpPower
-	smart_home_load = epcube_data.get("smart_home_power_watts", 0)
-	backup_load = epcube_data.get("backup_power_watts", 0)
-	if smart_home_load > 0:
-		load_power = smart_home_load
-		logger.info("Load source: smartHomePower (%.0fW)", load_power)
-	else:
-		load_power = backup_load
-		logger.info("Load source: backUpPower fallback (%.0fW)", load_power)
+	load_power = _select_load_source(epcube_data)
 	# run decision engine
-	result = decision_engine.decide(
+	result = battcontrol.decision_engine.decide(
 		battery_soc=battery_soc,
 		solar_power_watts=solar_power,
 		load_power_watts=load_power,
@@ -428,19 +488,18 @@ def main() -> None:
 		current_time=now,
 	)
 	logger.info("Decision: %s", result)
-	# check token friction: only act if action has been stable long enough
-	friction_count = config.get("token_friction_count", 2)
-	action_stable = control_state.action_stable_count >= friction_count
-	# execute actuators
-	if action_stable:
+	# execute actuators only when decision has stabilized (friction satisfied)
+	if result.stabilized:
 		# anti-churn: skip EP Cube command if mode and floor are nearly unchanged
+		anti_churn_threshold = config.get("anti_churn_floor_threshold", 2)
 		last_floor = control_state.last_commanded_floor
-		floor_changed = (last_floor is None or abs(result.soc_floor - last_floor) >= 2)
+		floor_changed = (last_floor is None
+			or abs(result.soc_floor - last_floor) >= anti_churn_threshold)
 		mode_changed = (control_state.last_action != result.action.value)
 		should_send = floor_changed or mode_changed
 		# EP Cube actuator
 		if epcube_client is not None and should_send:
-			epcube_mod.execute_epcube(result, epcube_client, config, dry_run)
+			battcontrol.epcube_client.execute_epcube(result, epcube_client, config, dry_run)
 			control_state.last_commanded_floor = result.soc_floor
 		elif epcube_client is not None and not should_send:
 			logger.info(
@@ -451,16 +510,11 @@ def main() -> None:
 		charge_plug = config.get("wemo_charge_plug_name", "")
 		discharge_plug = config.get("wemo_discharge_plug_name", "")
 		if charge_plug or discharge_plug:
-			wemo_mod.execute_wemo(result.action, config, dry_run)
-	else:
-		logger.info(
-			"Token friction: action %s stable for %d/%d cycles, waiting",
-			result.action.value, control_state.action_stable_count, friction_count,
-		)
+			battcontrol.wemo_actuator.execute_wemo(result.action, config, dry_run)
 	# save state
 	control_state.save()
 	# print summary line for cron log
-	mode_name = decision_engine.ACTION_MODE_MAP.get(result.action, "?")
+	mode_name = battcontrol.decision_engine.ACTION_MODE_MAP.get(result.action, "?")
 	_print_summary(result.action.value, mode_name, result.soc_floor, result.reason, dry_run)
 
 

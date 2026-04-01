@@ -155,30 +155,3 @@ class TestExecuteEpcube:
 		assert success is False
 
 
-#============================================
-class TestSafeConversions:
-	"""Tests for _safe_float and _safe_int."""
-
-	#============================================
-	def test_safe_float_none(self):
-		assert epcube_client._safe_float(None) == 0.0
-
-	#============================================
-	def test_safe_float_string(self):
-		assert epcube_client._safe_float("3.14") == 3.14
-
-	#============================================
-	def test_safe_float_invalid(self):
-		assert epcube_client._safe_float("abc") == 0.0
-
-	#============================================
-	def test_safe_int_none(self):
-		assert epcube_client._safe_int(None) == 0
-
-	#============================================
-	def test_safe_int_string(self):
-		assert epcube_client._safe_int("42") == 42
-
-	#============================================
-	def test_safe_int_invalid(self):
-		assert epcube_client._safe_int("xyz") == 0

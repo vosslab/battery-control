@@ -13,10 +13,10 @@ REPO_ROOT = git_file_utils.get_repo_root()
 
 import sys
 sys.path.insert(0, REPO_ROOT)
-import battcontrol.config as config_mod
-import battcontrol.state as state_mod
-import battcontrol.decision_engine as decision_engine
-import battcontrol.battery_controller as battery_controller_mod
+import battcontrol.config
+import battcontrol.state
+import battcontrol.decision_engine
+import battcontrol.battery_controller
 
 
 #============================================
@@ -28,21 +28,21 @@ class TestParseArgs:
 		"""Config file defaults to config.yml when -c is not provided."""
 		# simulate no CLI args (just the program name)
 		monkeypatch.setattr("sys.argv", ["battery_controller"])
-		args = battery_controller_mod.parse_args()
+		args = battcontrol.battery_controller.parse_args()
 		assert args.config_file == "config.yml"
 
 	#============================================
 	def test_config_override(self, monkeypatch):
 		"""Config file can be overridden with -c flag."""
 		monkeypatch.setattr("sys.argv", ["battery_controller", "-c", "custom.yml"])
-		args = battery_controller_mod.parse_args()
+		args = battcontrol.battery_controller.parse_args()
 		assert args.config_file == "custom.yml"
 
 	#============================================
 	def test_dry_run_default(self, monkeypatch):
 		"""Dry run is the default mode."""
 		monkeypatch.setattr("sys.argv", ["battery_controller"])
-		args = battery_controller_mod.parse_args()
+		args = battcontrol.battery_controller.parse_args()
 		assert args.dry_run is True
 
 
@@ -58,7 +58,7 @@ def _make_config_file(tmp_path, overrides: dict = None) -> str:
 	Returns:
 		str: Path to the temporary config file.
 	"""
-	config = dict(config_mod.DEFAULTS)
+	config = dict(battcontrol.config.DEFAULTS)
 	# write token to a file and reference it via epcube_token_file
 	token_file = tmp_path / ".epcube_token"
 	token_file.write_text("test_token")
@@ -82,9 +82,9 @@ class TestSmokePipeline:
 	def test_full_pipeline_dry_run(self, tmp_path):
 		"""Full pipeline runs without exceptions in dry-run mode."""
 		config_path = _make_config_file(tmp_path)
-		config = config_mod.load_config(config_path)
+		config = battcontrol.config.load_config(config_path)
 		# load state
-		control_state = state_mod.ControlState(str(tmp_path / "state.json"))
+		control_state = battcontrol.state.ControlState(str(tmp_path / "state.json"))
 		control_state.load()
 		# mock ComEd price
 		comed_price = 12.5
@@ -101,7 +101,7 @@ class TestSmokePipeline:
 		# run decision engine
 		import datetime
 		now = datetime.datetime(2025, 7, 15, 14, 0)
-		result = decision_engine.decide(
+		result = battcontrol.decision_engine.decide(
 			battery_soc=epcube_data["battery_soc"],
 			solar_power_watts=epcube_data["solar_power_watts"],
 			load_power_watts=epcube_data["backup_power_watts"],
@@ -112,7 +112,7 @@ class TestSmokePipeline:
 			current_time=now,
 		)
 		# verify decision is valid
-		assert isinstance(result.action, decision_engine.Action)
+		assert isinstance(result.action, battcontrol.decision_engine.Action)
 		assert result.reason != ""
 		# save state
 		control_state.save()
@@ -123,12 +123,12 @@ class TestSmokePipeline:
 	def test_pipeline_no_solar(self, tmp_path):
 		"""Pipeline works with no solar (night scenario)."""
 		config_path = _make_config_file(tmp_path)
-		config = config_mod.load_config(config_path)
-		control_state = state_mod.ControlState(str(tmp_path / "state.json"))
+		config = battcontrol.config.load_config(config_path)
+		control_state = battcontrol.state.ControlState(str(tmp_path / "state.json"))
 		control_state.load()
 		import datetime
 		now = datetime.datetime(2025, 7, 15, 20, 0)
-		result = decision_engine.decide(
+		result = battcontrol.decision_engine.decide(
 			battery_soc=70,
 			solar_power_watts=0,
 			load_power_watts=500,
@@ -138,15 +138,15 @@ class TestSmokePipeline:
 			control_state=control_state,
 			current_time=now,
 		)
-		assert isinstance(result.action, decision_engine.Action)
+		assert isinstance(result.action, battcontrol.decision_engine.Action)
 		control_state.save()
 
 	#============================================
 	def test_pipeline_token_expired(self, tmp_path):
 		"""Pipeline handles token expiration gracefully."""
 		config_path = _make_config_file(tmp_path)
-		config = config_mod.load_config(config_path)
-		control_state = state_mod.ControlState(str(tmp_path / "state.json"))
+		config = battcontrol.config.load_config(config_path)
+		control_state = battcontrol.state.ControlState(str(tmp_path / "state.json"))
 		control_state.load()
 		# simulate expired token
 		control_state.mark_token_expired()
@@ -154,7 +154,7 @@ class TestSmokePipeline:
 		# pipeline should still work with no EP Cube data
 		import datetime
 		now = datetime.datetime(2025, 7, 15, 18, 0)
-		result = decision_engine.decide(
+		result = battcontrol.decision_engine.decide(
 			battery_soc=50,
 			solar_power_watts=0,
 			load_power_watts=500,
@@ -164,10 +164,10 @@ class TestSmokePipeline:
 			control_state=control_state,
 			current_time=now,
 		)
-		assert isinstance(result.action, decision_engine.Action)
+		assert isinstance(result.action, battcontrol.decision_engine.Action)
 		control_state.save()
 		# verify state preserves token expired flag
-		cs2 = state_mod.ControlState(str(tmp_path / "state.json"))
+		cs2 = battcontrol.state.ControlState(str(tmp_path / "state.json"))
 		cs2.load()
 		assert cs2.token_expired is True
 
@@ -175,13 +175,13 @@ class TestSmokePipeline:
 	def test_pipeline_extreme_price(self, tmp_path):
 		"""Pipeline handles extreme price correctly."""
 		config_path = _make_config_file(tmp_path)
-		config = config_mod.load_config(config_path)
-		control_state = state_mod.ControlState(str(tmp_path / "state.json"))
+		config = battcontrol.config.load_config(config_path)
+		control_state = battcontrol.state.ControlState(str(tmp_path / "state.json"))
 		control_state.load()
 		import datetime
 		# summer daytime, no surplus, extreme price
 		now = datetime.datetime(2025, 7, 15, 13, 0)
-		result = decision_engine.decide(
+		result = battcontrol.decision_engine.decide(
 			battery_soc=80,
 			solar_power_watts=100,
 			load_power_watts=500,
@@ -191,7 +191,7 @@ class TestSmokePipeline:
 			control_state=control_state,
 			current_time=now,
 		)
-		assert result.action == decision_engine.Action.DISCHARGE_ENABLED
+		assert result.action == battcontrol.decision_engine.Action.DISCHARGE_ENABLED
 		control_state.save()
 
 	#============================================
@@ -218,9 +218,9 @@ class TestSmokePipeline:
 		]
 		for soc, solar, backup, price, now in scenarios:
 			config_path = _make_config_file(tmp_path)
-			config = config_mod.load_config(config_path)
-			cs = state_mod.ControlState(str(tmp_path / f"state_{soc}_{price}.json"))
-			result = decision_engine.decide(
+			config = battcontrol.config.load_config(config_path)
+			cs = battcontrol.state.ControlState(str(tmp_path / f"state_{soc}_{price}.json"))
+			result = battcontrol.decision_engine.decide(
 				battery_soc=soc,
 				solar_power_watts=solar,
 				load_power_watts=backup,
@@ -233,3 +233,35 @@ class TestSmokePipeline:
 			actions_seen.add(result.action)
 		# verify we see multiple action types
 		assert len(actions_seen) >= 3
+
+
+#============================================
+class TestSelectLoadSource:
+	"""Tests for _select_load_source helper."""
+
+	#============================================
+	def test_prefers_smart_home(self):
+		"""Uses smartHomePower when available."""
+		data = {"smart_home_power_watts": 1500, "backup_power_watts": 800}
+		result = battcontrol.battery_controller._select_load_source(data)
+		assert result == 1500
+
+	#============================================
+	def test_falls_back_to_backup(self):
+		"""Falls back to backUpPower when smartHomePower is zero."""
+		data = {"smart_home_power_watts": 0, "backup_power_watts": 800}
+		result = battcontrol.battery_controller._select_load_source(data)
+		assert result == 800
+
+	#============================================
+	def test_both_zero(self):
+		"""Returns zero when both sources are zero."""
+		data = {"smart_home_power_watts": 0, "backup_power_watts": 0}
+		result = battcontrol.battery_controller._select_load_source(data)
+		assert result == 0
+
+	#============================================
+	def test_missing_keys(self):
+		"""Returns zero when keys are missing from data."""
+		result = battcontrol.battery_controller._select_load_source({})
+		assert result == 0

@@ -1,5 +1,84 @@
 # Changelog
 
+## 2026-04-01
+
+### Fixes and Maintenance
+
+- Deleted dead `_compute_pacing()` function from `decision_engine.py` (lines
+  178-211) and removed the discarded call at line 400; the same calculation
+  is done inline where the result is actually used
+- Fixed tautological assertion in `test_decision_engine.py:75` that could
+  never fail: replaced `A or B` double-negative with a direct action check
+- Inlined unused `current_price` variable in
+  `battery_controller.py:_fetch_comed_price()`; the value was fetched via
+  `getCurrentComedRate()` but only appeared in a log line and was never
+  returned
+- Eliminated 5-way field duplication in `state.py`: `__init__`, `load()`,
+  `save()`, and `to_dict()` now all drive from the single `_DEFAULT_STATE`
+  dict; adding a new state field requires editing only one place
+- Extracted `_ensure_valid_token()` and `_try_renew_after_rejection()` from
+  `_fetch_epcube_data()` in `battery_controller.py`; eliminated triple-repeated
+  token check/renew/retry blocks tracked by `already_renewed` flag; function
+  dropped from 106 to 28 lines
+- Moved policy stabilization (token friction) into `_apply_hysteresis()` in
+  `decision_engine.py`; added `stabilized` field to `DecisionResult` so the
+  decision engine owns friction logic; controller still owns actuator-level
+  command suppression (anti-churn)
+- Replaced magic number `2` in anti-churn floor threshold with
+  `config.get("anti_churn_floor_threshold", 2)` for configurability
+- Narrowed `except Exception` in `_fetch_comed_price()` to
+  `(RuntimeError, ValueError, requests.RequestException)`
+- Removed `as` import aliases across `battery_controller.py`,
+  `decision_engine.py`, and `wemo_actuator.py` per PYTHON_STYLE.md;
+  all references now use full `battcontrol.module` paths
+- Split `epcube_get_token.py` (922 lines) into three modules:
+  `battcontrol/epcube_captcha.py` (CAPTCHA solver, ~540 lines),
+  `battcontrol/epcube_login.py` (login flow + token management, ~140 lines),
+  and a thin CLI wrapper at root (~120 lines)
+- Centralized `BASE_URLS`, `USER_AGENT`, `get_base_url()`, and
+  `get_headers()` in `battcontrol/epcube_client.py`; removed duplicate
+  definitions from the token generation code
+- Made `_get_base_url()` public as `get_base_url()` in `epcube_client.py`
+- Replaced fragile `import epcube_get_token` in `battery_controller.py` with
+  `import battcontrol.epcube_login` (package-internal import)
+- Extracted `_select_load_source()` helper from `main()` in
+  `battery_controller.py` for load power source selection
+- Updated `tests/test_epcube_get_token.py` to import from new module paths
+- Removed low-value tests: `_safe_float`/`_safe_int` (testing builtins),
+  wemo dry-run-only tests, argparse tests in `test_epcube_get_token.py`
+- Replaced hardcoded interpolation assertions in `test_config.py` with
+  behavioral range checks (floor decreases with price, interpolated values
+  fall between anchor floors)
+- Updated test imports in `test_smoke_battery_controller.py` to use full
+  module paths matching production code style
+
+### Additions and New Features
+
+- Added "Price input: worst-case predictor" section to `docs/STRATEGY.md`
+  documenting that `comedlib.getPredictedRate()` is intentionally pessimistic
+  (clamps negatives, floors slope, returns max of three estimates)
+- Added comment near `getPredictedRate()` call site in `battery_controller.py`
+  pointing to the STRATEGY.md documentation
+
+### Developer Tests and Notes
+
+- Added `TestSolarAndPeakTransition` tests for solar availability and
+  peak mode transitions (night vs peak by time, solar timestamp reset)
+- Added `TestStabilizedField` tests verifying friction stabilization: first
+  decision is unstabilized, repeated same decision reaches stabilized=True
+- Added `TestSelectLoadSource` tests for load source fallback logic
+  (prefers smartHomePower, falls back to backUpPower, handles missing keys)
+- Added `test_reset_daily_clears_peak_mode` and
+  `test_round_trip_preserves_all_fields` to `test_state.py`
+
+### Decisions and Failures
+
+- Discovered that the solar fade trigger in `_should_transition_to_peak()`
+  is unreachable: it checks if solar dropped below threshold, but is only
+  called when `_is_solar_available()` already confirmed solar is above
+  threshold. The function always returns False via the "solar is strong"
+  branch. Filed as a known issue for future fix.
+
 ## 2026-03-31
 
 ### Additions and New Features

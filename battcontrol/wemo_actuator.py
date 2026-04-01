@@ -11,7 +11,7 @@ except ImportError:
 	PYWEMO_AVAILABLE = False
 
 # local repo modules
-import battcontrol.decision_engine as decision_engine
+import battcontrol.decision_engine
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def _set_plug_state(device_name: str, state_on: bool, dry_run: bool) -> bool:
 
 
 #============================================
-def execute_wemo(action: decision_engine.Action, config: dict, dry_run: bool) -> bool:
+def execute_wemo(action: battcontrol.decision_engine.Action, config: dict, dry_run: bool) -> bool:
 	"""
 	Translate a decision action into WeMo smart plug commands.
 
@@ -90,7 +90,7 @@ def execute_wemo(action: decision_engine.Action, config: dict, dry_run: bool) ->
 	if not charge_plug and not discharge_plug:
 		logger.info("No WeMo plugs configured, skipping WeMo actuator")
 		return False
-	if action == decision_engine.Action.DISCHARGE_ENABLED:
+	if action == battcontrol.decision_engine.Action.DISCHARGE_ENABLED:
 		# turn on discharge plug, turn off charge plug
 		logger.info("WeMo: discharge enabled")
 		_set_plug_state(charge_plug, False, dry_run)

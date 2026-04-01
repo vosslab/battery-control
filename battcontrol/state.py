@@ -42,17 +42,9 @@ class ControlState:
 		if file_path is None:
 			file_path = os.path.join(tempfile.gettempdir(), "battery_control_state.json")
 		self.file_path = file_path
-		self.price_segment_counter = 0
-		self.current_price_segment = -999
-		self.last_action = ""
-		self.action_stable_count = 0
-		self.peak_mode_active = False
-		self.peak_mode_entered_at = None
-		self.last_solar_above_threshold_at = None
-		self.last_commanded_floor = None
-		self.token_expired = False
-		self.token_expired_at = None
-		self.token_last_success_at = None
+		# initialize all fields from defaults
+		for key, default in _DEFAULT_STATE.items():
+			setattr(self, key, default)
 
 	#============================================
 	def load(self) -> None:
@@ -63,36 +55,16 @@ class ControlState:
 			return
 		with open(self.file_path, "r") as f:
 			data = json.load(f)
-		self.price_segment_counter = data.get("price_segment_counter", 0)
-		self.current_price_segment = data.get("current_price_segment", -999)
-		self.last_action = data.get("last_action", "")
-		self.action_stable_count = data.get("action_stable_count", 0)
-		self.peak_mode_active = data.get("peak_mode_active", False)
-		self.peak_mode_entered_at = data.get("peak_mode_entered_at", None)
-		self.last_solar_above_threshold_at = data.get("last_solar_above_threshold_at", None)
-		self.last_commanded_floor = data.get("last_commanded_floor", None)
-		self.token_expired = data.get("token_expired", False)
-		self.token_expired_at = data.get("token_expired_at", None)
-		self.token_last_success_at = data.get("token_last_success_at", None)
+		# restore each field from saved data, falling back to defaults
+		for key, default in _DEFAULT_STATE.items():
+			setattr(self, key, data.get(key, default))
 
 	#============================================
 	def save(self) -> None:
 		"""
 		Save state to JSON file atomically (write to tmp, rename).
 		"""
-		data = {
-			"price_segment_counter": self.price_segment_counter,
-			"current_price_segment": self.current_price_segment,
-			"last_action": self.last_action,
-			"action_stable_count": self.action_stable_count,
-			"peak_mode_active": self.peak_mode_active,
-			"peak_mode_entered_at": self.peak_mode_entered_at,
-			"last_solar_above_threshold_at": self.last_solar_above_threshold_at,
-			"last_commanded_floor": self.last_commanded_floor,
-			"token_expired": self.token_expired,
-			"token_expired_at": self.token_expired_at,
-			"token_last_success_at": self.token_last_success_at,
-		}
+		data = {k: getattr(self, k) for k in _DEFAULT_STATE}
 		tmp_path = self.file_path + ".tmp"
 		with open(tmp_path, "w") as f:
 			json.dump(data, f, indent=2)
@@ -164,16 +136,4 @@ class ControlState:
 		Returns:
 			dict: Current state values.
 		"""
-		return {
-			"price_segment_counter": self.price_segment_counter,
-			"current_price_segment": self.current_price_segment,
-			"last_action": self.last_action,
-			"action_stable_count": self.action_stable_count,
-			"peak_mode_active": self.peak_mode_active,
-			"peak_mode_entered_at": self.peak_mode_entered_at,
-			"last_solar_above_threshold_at": self.last_solar_above_threshold_at,
-			"last_commanded_floor": self.last_commanded_floor,
-			"token_expired": self.token_expired,
-			"token_expired_at": self.token_expired_at,
-			"token_last_success_at": self.token_last_success_at,
-		}
+		return {k: getattr(self, k) for k in _DEFAULT_STATE}

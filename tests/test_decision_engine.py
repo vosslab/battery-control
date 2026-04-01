@@ -72,7 +72,7 @@ class TestGuards:
 			comed_price_cents=5.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action != decision_engine.Action.DISCHARGE_DISABLED or "Hard reserve" not in result.reason
+		assert result.action != decision_engine.Action.DISCHARGE_DISABLED
 
 
 #============================================
@@ -337,3 +337,93 @@ class TestTransitionTrigger:
 		)
 		assert result.action == decision_engine.Action.CHARGE_FROM_SOLAR
 		assert cs.peak_mode_active is False
+
+
+#============================================
+class TestSolarAndPeakTransition:
+	"""Tests for solar availability and peak transition logic."""
+
+	#============================================
+	def test_no_solar_before_peak_enters_night(self):
+		"""No solar before peak window enters night logic (not peak)."""
+		config = _make_config()
+		cs = _make_state()
+		# 3:30pm, solar gone, before peak window (default 4pm)
+		now = datetime.datetime(2025, 7, 15, 15, 30)
+		decision_engine.decide(
+			battery_soc=60, solar_power_watts=10, load_power_watts=200,
+			comed_price_cents=5.0, comed_median_cents=8.0,
+			config=config, control_state=cs, current_time=now,
+		)
+		# not in peak window, so night logic (not peak)
+		assert cs.peak_mode_active is False
+
+	#============================================
+	def test_no_solar_during_peak_enters_peak(self):
+		"""No solar during peak window enters peak logic."""
+		config = _make_config()
+		cs = _make_state()
+		# 5pm, solar gone, in peak window
+		now = datetime.datetime(2025, 7, 15, 17, 0)
+		decision_engine.decide(
+			battery_soc=60, solar_power_watts=10, load_power_watts=200,
+			comed_price_cents=12.0, comed_median_cents=8.0,
+			config=config, control_state=cs, current_time=now,
+		)
+		assert cs.peak_mode_active is True
+
+	#============================================
+	def test_solar_strong_resets_timer(self):
+		"""Solar above threshold updates the last-above timestamp."""
+		config = _make_config()
+		cs = _make_state()
+		old_time = datetime.datetime(2025, 7, 15, 14, 0)
+		cs.last_solar_above_threshold_at = old_time.isoformat()
+		now = datetime.datetime(2025, 7, 15, 15, 0)
+		decision_engine.decide(
+			battery_soc=60, solar_power_watts=3000, load_power_watts=200,
+			comed_price_cents=5.0, comed_median_cents=8.0,
+			config=config, control_state=cs, current_time=now,
+		)
+		# timestamp should be updated to now (solar was strong)
+		updated = datetime.datetime.fromisoformat(cs.last_solar_above_threshold_at)
+		assert updated > old_time
+
+
+#============================================
+class TestStabilizedField:
+	"""Tests for the stabilized field on DecisionResult."""
+
+	#============================================
+	def test_first_decision_not_stabilized(self):
+		"""First decision is not stabilized (friction count not met)."""
+		config = _make_config()
+		cs = _make_state()
+		now = datetime.datetime(2025, 7, 15, 17, 0)
+		result = decision_engine.decide(
+			battery_soc=80, solar_power_watts=0, load_power_watts=200,
+			comed_price_cents=15.0, comed_median_cents=8.0,
+			config=config, control_state=cs, current_time=now,
+		)
+		# first call: action_stable_count == 1, friction_count default == 2
+		assert result.stabilized is False
+
+	#============================================
+	def test_repeated_decision_stabilizes(self):
+		"""Same action repeated enough times sets stabilized True."""
+		config = _make_config()
+		cs = _make_state()
+		now = datetime.datetime(2025, 7, 15, 17, 0)
+		# run decide twice with the same inputs
+		decision_engine.decide(
+			battery_soc=80, solar_power_watts=0, load_power_watts=200,
+			comed_price_cents=15.0, comed_median_cents=8.0,
+			config=config, control_state=cs, current_time=now,
+		)
+		result2 = decision_engine.decide(
+			battery_soc=80, solar_power_watts=0, load_power_watts=200,
+			comed_price_cents=15.0, comed_median_cents=8.0,
+			config=config, control_state=cs, current_time=now,
+		)
+		# second call should meet friction_count threshold
+		assert result2.stabilized is True
