@@ -4,6 +4,8 @@
 
 ### Additions and New Features
 
+- Added file logging to `battery_controller.log` in CWD (append mode, always
+  INFO level); terminal verbosity is still controlled by `-v` flags
 - Switched decision engine price input from `getCurrentComedRate()` to
   `getPredictedRate()` which uses linear regression on the current hour's data
   to estimate where price is heading; current rate is still logged for reference

@@ -1,0 +1,37 @@
+I have an epcube battery backup, solar panels, and IL comed hourly pricing. no code, but I need a conceptual strategy on when to discharge on the battery backup, we have to take into account pricing the higher the electricity price the lower SoC that is accept. I am not allowed to charge from the grid, so I can only charge using solar power.
+
+on "treats your battery like a scarce resource", we can make up to 50kWh of solar on a summer day, and the battery is only 18kWh. It is 11:30am on March 1 and we have make 12kWh solar. 
+
+yes, but if we make 50kWh on a solar day in a mid day blob when prices are cheap, we want to use that excess during 5pm when people get home and electricity prices jump. this is a daily cycle not a scarce resource cycle.
+
+I am thinking like if prices are 5c then allow down to 50%, 8c then 30%, over 10c then 20%, over 20c then 10% or something.
+
+winter and summer two different strategies, summer is predictable, winter is chaotic
+
+I want to program to start it and forget it, it does not have to be daemon itself, I have daemons that run scripts every 3 minutes. We could pull in weather data, but I worry that pulling weather data can be unreliable. 
+
+what setting would I use to send all solar to the battery to charge and pull energy from the grid to satisfy house demand
+
+back up mode is not charging the battery. The battery is only 26% and I want to get that number higher
+
+battery charge status is low at 26%, electricity prices are low at 4 cents, solar is producing 1.5kW, so good time to charge the battery. House is using about 0.8kW, and it is send the remaining 0.7 kW to the grid, so no charging is happening.
+
+I will try the off-peak mode. We have hourly pricing that is often unpredictable, so I cannot set a fixed time.
+
+I guess I want to know this
+
+* When electricity prices are HIGH, I want max TO the grid. What setting to use?
+
+* When electricity prices are LOW, I want max FROM the grid or ZERO TO the grid. What setting to use?
+
+Cheap hours and Expensive hours are unpredictable. So I need to script it where it reads the price and decides, or I need to set it manually by looking at the price
+
+"Self-consumption" is easier to set than TOU for HIGH price hours, TOU I have to mess with the time.
+
+for LOW price hours, I will have manually set the time range for TOU, Off-peak.
+
+while those were the prices for the last 24 hours, the next 24 hours will be different.
+
+I have a script that decides when it is good to use or not, I just need to plug it into the EP Cube.
+
+

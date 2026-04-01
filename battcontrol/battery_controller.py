@@ -65,20 +65,36 @@ def _setup_logging(verbose: int) -> None:
 	"""
 	Configure logging based on verbosity level.
 
+	Logs to both the terminal and battery_controller.log in the current
+	working directory. The file log always uses INFO level regardless of
+	the terminal verbosity setting.
+
 	Args:
 		verbose: Verbosity count (0=WARNING, 1=INFO, 2=DEBUG).
 	"""
 	if verbose >= 2:
-		level = logging.DEBUG
+		console_level = logging.DEBUG
 	elif verbose >= 1:
-		level = logging.INFO
+		console_level = logging.INFO
 	else:
-		level = logging.WARNING
-	logging.basicConfig(
-		level=level,
-		format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
-		datefmt="%Y-%m-%d %H:%M:%S",
-	)
+		console_level = logging.WARNING
+	log_format = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
+	date_format = "%Y-%m-%d %H:%M:%S"
+	# set root logger to the most permissive level needed
+	file_level = logging.INFO
+	root_level = min(console_level, file_level)
+	root_logger = logging.getLogger()
+	root_logger.setLevel(root_level)
+	# console handler
+	console_handler = logging.StreamHandler()
+	console_handler.setLevel(console_level)
+	console_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+	root_logger.addHandler(console_handler)
+	# file handler (always INFO, append mode)
+	file_handler = logging.FileHandler("battery_controller.log", mode="a")
+	file_handler.setLevel(file_level)
+	file_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+	root_logger.addHandler(file_handler)
 
 
 #============================================
