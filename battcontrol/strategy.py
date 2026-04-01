@@ -138,6 +138,7 @@ def _daylight_logic(
 	solar_power_watts: float,
 	load_power_watts: float,
 	comed_price_cents: float,
+	comed_cutoff_cents: float,
 	season: str,
 	config: dict,
 ) -> DecisionResult:
@@ -149,6 +150,7 @@ def _daylight_logic(
 		solar_power_watts: Current solar power in watts.
 		load_power_watts: Current house load in watts.
 		comed_price_cents: Current ComEd price in cents.
+		comed_cutoff_cents: Reasonable cutoff price from comedlib.
 		season: 'summer', 'shoulder', or 'winter'.
 		config: Configuration dictionary.
 
@@ -166,6 +168,30 @@ def _daylight_logic(
 	)
 	if surplus > 0:
 		# section B.2: solar is excess
+		# B.2x: if price is above the comedlib cutoff, export surplus to grid
+		# rather than charging battery. Use price-to-SoC anchors for the
+		# discharge floor so the battery is ready if load spikes past solar.
+		if comed_price_cents > comed_cutoff_cents:
+			price_floor = battcontrol.config.get_price_floor(
+				config, season, comed_price_cents
+			)
+			segment_idx = battcontrol.config.get_price_segment_index(
+				config, season, comed_price_cents
+			)
+			logger.info(
+				"Price %.1fc above cutoff %.1fc during surplus, "
+				"exporting to grid, floor %d%%",
+				comed_price_cents, comed_cutoff_cents, price_floor,
+			)
+			return DecisionResult(
+				action=Action.DISCHARGE_ENABLED,
+				reason=(f"Price {comed_price_cents:.1f}c > cutoff "
+					f"{comed_cutoff_cents:.1f}c, exporting surplus, "
+					f"floor {price_floor}%"),
+				soc_floor=price_floor,
+				price_segment=segment_idx,
+				target_mode="self_consumption",
+			)
 		if battery_soc < afternoon_target:
 			# B.2a: below afternoon target, let solar charge
 			logger.info(
@@ -380,6 +406,7 @@ def evaluate(
 	load_power_watts: float,
 	comed_price_cents: float,
 	comed_median_cents: float,
+	comed_cutoff_cents: float,
 	current_time: datetime.datetime,
 	config: dict,
 ) -> DecisionResult:
@@ -397,6 +424,9 @@ def evaluate(
 		comed_price_cents: Current ComEd price in cents.
 		comed_median_cents: 24-hour median ComEd price in cents (unused but kept
 			for replay compatibility).
+		comed_cutoff_cents: Reasonable cutoff price from comedlib. Prices above
+			this indicate conserve mode (export surplus); below means consume
+			(charge battery).
 		current_time: Current datetime.
 		config: Configuration dictionary.
 
@@ -411,10 +441,10 @@ def evaluate(
 	)
 	# log key inputs for reasoning trace
 	logger.info(
-		"Inputs: SoC %d%% | Price %.1fc | Solar %.0fW | Load %.0fW | Hour %d | "
-		"Season %s",
-		battery_soc, comed_price_cents, solar_power_watts, load_power_watts,
-		current_time.hour, season,
+		"Inputs: SoC %d%% | Price %.1fc | Cutoff %.1fc | Solar %.0fW | Load %.0fW "
+		"| Hour %d | Season %s",
+		battery_soc, comed_price_cents, comed_cutoff_cents, solar_power_watts,
+		load_power_watts, current_time.hour, season,
 	)
 	# A.1: hard reserve check
 	if battery_soc <= hard_reserve:
@@ -466,7 +496,7 @@ def evaluate(
 	logger.info("Entering daylight logic")
 	result = _daylight_logic(
 		battery_soc, solar_power_watts, load_power_watts,
-		comed_price_cents, season, config
+		comed_price_cents, comed_cutoff_cents, season, config
 	)
 	logger.info("Decision: %s", result)
 	return result

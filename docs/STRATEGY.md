@@ -62,6 +62,15 @@ The controller implements its own tariff logic using ComEd real-time pricing rat
 
 The price fed to the decision engine is not the instantaneous ComEd rate. It comes from `comedlib.getPredictedRate()`, which is intentionally a pessimistic (worst-case) estimator. It clamps negative and near-zero prices to 1.0 cent, floors the trend slope at +0.1 (never predicts a declining trend), computes three independent estimates (mean plus standard deviation, linear-regression slope extrapolation, and a weighted average of max/mean/recent), and returns the highest of the three. This conservative bias means the controller sees prices as higher than they may actually be, which prevents discharging the battery on a brief price dip that reverses shortly after.
 
+### Price input: usage cutoff
+
+The controller also fetches `comedlib.getReasonableCutOff()`, a time-aware cutoff price that determines whether energy should be conserved or consumed. The cutoff starts from the 75th percentile of 24-hour rates, adjusts for weekends (+0.9c), late night (+0.8c), and solar peak hours (Gaussian bonus up to +1.5c centered at noon), with a floor of 1.0c.
+
+- If predicted rate > cutoff: **conserve** (prices are high, export surplus to grid)
+- If predicted rate <= cutoff: **consume** (prices are low, charge battery from surplus)
+
+This cutoff is used in daylight logic (section B.2x) to decide whether solar surplus should charge the battery or export to the grid.
+
 ## Flow chart
 
 ### A. Guards (always run first)
@@ -80,6 +89,7 @@ Goal: charge from solar. Avoid discharging unless prices are extreme or you need
 1. Compute "Solar Surplus" = solar generation minus house load.
 If you cannot measure load, approximate surplus by battery charging rate or net export if available.
 2. If Surplus > 0 (solar is excess)
+  - 2x. If predicted price > usage cutoff (conserve mode): export surplus to grid instead of charging battery. Use price-to-SoC anchors for the discharge floor so the battery is ready to respond instantly if a load spike exceeds solar, without waiting up to 2 minutes for the next controller cycle. `DISCHARGE_ENABLED` with interpolated floor. Stop.
   - 2a. If SoC < Afternoon Target SoC (100% all seasons)
 Then: `CHARGE_FROM_SOLAR` with target SoC as reserve. Stop.
   - 2b. If SoC >= Afternoon Target SoC

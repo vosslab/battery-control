@@ -188,6 +188,10 @@ def run_replay(
 		solar_power = estimate_power_from_kwh(actual_solar_kwh)
 		load_power = estimate_power_from_kwh(actual_load_kwh)
 		comed_median = safe_float(row.get('comed_price_median', ''))
+		# cutoff from CSV if available, otherwise approximate from median
+		comed_cutoff = safe_float(row.get('comed_cutoff', ''))
+		if comed_cutoff == 0.0 and row.get('comed_cutoff', '').strip() in ('', None):
+			comed_cutoff = comed_median
 
 		# call strategy.evaluate with simulated SoC (not actual)
 		# this lets strategy decisions cascade across hours
@@ -198,6 +202,7 @@ def run_replay(
 			load_power_watts=load_power,
 			comed_price_cents=comed_price,
 			comed_median_cents=comed_median,
+			comed_cutoff_cents=comed_cutoff,
 			current_time=current_time,
 			config=config,
 		)

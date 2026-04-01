@@ -110,14 +110,15 @@ def _setup_logging(verbose: int) -> None:
 #============================================
 def _fetch_comed_price() -> tuple:
 	"""
-	Fetch predicted ComEd price and median for decision making.
+	Fetch predicted ComEd price, median, and usage cutoff for decision making.
 
 	Uses getPredictedRate() which applies linear regression on the current
 	hour's data points to estimate where the price is heading. This is better
 	for proactive decisions than the instantaneous current rate.
 
 	Returns:
-		tuple: (predicted_price_cents, median_cents) or (None, None) on failure.
+		tuple: (predicted_price_cents, median_cents, cutoff_cents) or
+			(None, None, None) on failure.
 	"""
 	try:
 		import battcontrol.comedlib
@@ -126,14 +127,15 @@ def _fetch_comed_price() -> tuple:
 		# (see docs/STRATEGY.md "Price input: worst-case predictor")
 		predicted_price = comlib.getPredictedRate()
 		median_price, _ = comlib.getMedianComedRate()
+		cutoff_price = comlib.getReasonableCutOff()
 		logger.info(
-			"ComEd price: predicted %.2fc, current %.2fc, median %.2fc",
-			predicted_price, comlib.getCurrentComedRate(), median_price,
+			"ComEd price: predicted %.2fc, current %.2fc, median %.2fc, cutoff %.2fc",
+			predicted_price, comlib.getCurrentComedRate(), median_price, cutoff_price,
 		)
-		return predicted_price, median_price
+		return predicted_price, median_price, cutoff_price
 	except (RuntimeError, ValueError, requests.RequestException) as err:
 		logger.error("Failed to fetch ComEd price: %s", err)
-		return None, None
+		return None, None, None
 
 
 #============================================
@@ -464,7 +466,7 @@ def main() -> None:
 	csv_path = config.get("hourly_csv_path", "data/hourly_history.csv")
 	hourly_logger = battcontrol.hourly_logger.HourlyLogger(csv_path)
 	# fetch ComEd price
-	comed_price, comed_median = _fetch_comed_price()
+	comed_price, comed_median, comed_cutoff = _fetch_comed_price()
 	if comed_price is None:
 		logger.warning("ComEd price unavailable, holding current state")
 		control_state.save()
@@ -493,6 +495,7 @@ def main() -> None:
 		load_power_watts=load_power,
 		comed_price_cents=comed_price,
 		comed_median_cents=comed_median,
+		comed_cutoff_cents=comed_cutoff,
 		config=config,
 		control_state=control_state,
 		current_time=now,
@@ -503,6 +506,7 @@ def main() -> None:
 		epcube_data=epcube_data,
 		comed_price=comed_price,
 		comed_median=comed_median,
+		comed_cutoff=comed_cutoff,
 		result=result,
 		config=config,
 	)

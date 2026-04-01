@@ -35,5 +35,5 @@ while those were the prices for the last 24 hours, the next 24 hours will be dif
 I have a script that decides when it is good to use or not, I just need to plug it into the EP Cube.
 
 
-the strategy is that if prices are low and we are making solar charge to 100%, the only change of logic is in summer where solar is guarenteed. prices could go negative and  
-in that case we need some SoC headroom, so we do not lose $$ sending negative kWh from solar to the grid  
+the strategy is that if prices are low and we are making solar charge to 100%, the only change of logic is in summer where solar is guarenteed. prices could go negative and
+in that case we need some SoC headroom, so we do not lose $$ sending negative kWh from solar to the grid

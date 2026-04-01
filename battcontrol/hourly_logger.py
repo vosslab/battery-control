@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # CSV output columns in order
 CSV_COLUMNS = [
-	"hour_start", "season", "comed_price", "comed_price_median",
+	"hour_start", "season", "comed_price", "comed_price_median", "comed_cutoff",
 	"start_soc", "end_soc", "grid_kwh", "solar_kwh", "load_kwh",
 	"battery_charge_kwh", "battery_discharge_kwh",
 	"policy_action", "epcube_mode", "reserve_soc",
@@ -47,6 +47,7 @@ class HourlyLogger:
 		self.latest_soc = None
 		self.latest_price = None
 		self.latest_median = None
+		self.latest_cutoff = None
 		self.latest_action = None
 		self.latest_mode = None
 		self.latest_reserve = None
@@ -71,6 +72,7 @@ class HourlyLogger:
 		epcube_data: dict,
 		comed_price: float,
 		comed_median: float,
+		comed_cutoff: float,
 		result,
 		config: dict,
 	) -> None:
@@ -107,6 +109,7 @@ class HourlyLogger:
 		self.latest_soc = epcube_data.get("battery_soc", 0)
 		self.latest_price = comed_price
 		self.latest_median = comed_median
+		self.latest_cutoff = comed_cutoff
 		self.latest_action = result.action.value if hasattr(result.action, 'value') else str(result.action)
 		self.latest_mode = result.target_mode
 		self.latest_reserve = result.soc_floor
@@ -222,6 +225,7 @@ class HourlyLogger:
 			"season": season,
 			"comed_price": f"{self.latest_price:.1f}" if self.latest_price is not None else "",
 			"comed_price_median": f"{self.latest_median:.1f}" if self.latest_median is not None else "",
+		"comed_cutoff": f"{self.latest_cutoff:.1f}" if self.latest_cutoff is not None else "",
 			"start_soc": self.start_soc,
 			"end_soc": self.latest_soc,
 			"grid_kwh": f"{grid_kwh:.3f}" if grid_kwh is not None else "",
@@ -259,6 +263,7 @@ class HourlyLogger:
 		self.latest_soc = None
 		self.latest_price = None
 		self.latest_median = None
+		self.latest_cutoff = None
 		self.latest_action = None
 		self.latest_mode = None
 		self.latest_reserve = None

@@ -22,6 +22,7 @@ def decide(
 	load_power_watts: float,
 	comed_price_cents: float,
 	comed_median_cents: float,
+	comed_cutoff_cents: float,
 	config: dict,
 	control_state: object,
 	current_time: datetime.datetime = None,
@@ -39,6 +40,7 @@ def decide(
 		load_power_watts: Current house load in watts.
 		comed_price_cents: Current ComEd price in cents.
 		comed_median_cents: 24-hour median ComEd price in cents.
+		comed_cutoff_cents: Reasonable cutoff price from comedlib.
 		config: Configuration dictionary.
 		control_state: ControlState instance (kept for interface compatibility).
 		current_time: Current datetime (defaults to now).
@@ -55,6 +57,7 @@ def decide(
 		load_power_watts=load_power_watts,
 		comed_price_cents=comed_price_cents,
 		comed_median_cents=comed_median_cents,
+		comed_cutoff_cents=comed_cutoff_cents,
 		current_time=current_time,
 		config=config,
 	)

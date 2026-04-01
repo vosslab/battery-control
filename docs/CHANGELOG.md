@@ -28,6 +28,16 @@
 
 ### Behavior or Interface Changes
 
+- Added comedlib usage cutoff to daylight surplus logic (new section B.2x):
+  when solar surplus exists and predicted price exceeds the comedlib
+  `getReasonableCutOff()` threshold, export surplus to grid instead of
+  charging the battery; uses price-to-SoC anchors for the discharge floor
+  so battery is ready to respond instantly if a load spike exceeds solar;
+  cutoff is time-aware (adjusts for weekends, late night, solar peak hours)
+  so the conserve/consume decision adapts throughout the day; previously
+  surplus always charged the battery regardless of price
+- Added `comed_cutoff` column to hourly CSV for replay strategy testing
+- Added cutoff to strategy log line for replay tracing
 - Created [docs/EPCUBE_MODE_BEHAVIOR.md](docs/EPCUBE_MODE_BEHAVIOR.md) documenting
   hardware behavior of each EP Cube mode (self-consumption, backup, TOU) with
   details from the EP Cube 2.0 User Manual: charging source priorities, TOU
