@@ -4,6 +4,7 @@
 
 # Standard Library
 import os
+import json
 import logging
 import argparse
 import datetime
@@ -48,6 +49,11 @@ def parse_args() -> argparse.Namespace:
 		'-v', '--verbose', dest='verbose',
 		action='count', default=0,
 		help="Increase logging verbosity",
+	)
+	parser.add_argument(
+		'--dump-raw', dest='dump_raw',
+		action='store_true', default=False,
+		help="Log raw EP Cube API payload and normalized state once",
 	)
 	parser.set_defaults(dry_run=True)
 	args = parser.parse_args()
@@ -244,11 +250,15 @@ def _fetch_epcube_data(config: dict, control_state: state_mod.ControlState) -> t
 	# check token age warning
 	_check_token_age(control_state, config)
 	logger.info(
-		"EP Cube: SoC=%d%%, Solar=%.0fW, Grid=%.0fW, Backup=%.0fW, Mode=%s",
+		"EP Cube: SoC=%d%%, Solar=%.0fW, Grid=%.0fW, "
+		"Load=%.0fW, Backup=%.0fW, NonBackup=%.0fW, Batt=%.0fW, Mode=%s",
 		device_data.get("battery_soc", 0),
 		device_data.get("solar_power_watts", 0),
 		device_data.get("grid_power_watts", 0),
+		device_data.get("smart_home_power_watts", 0),
 		device_data.get("backup_power_watts", 0),
+		device_data.get("non_backup_power_watts", 0),
+		device_data.get("battery_power_watts", 0),
 		device_data.get("work_status", "?"),
 	)
 	return device_data, client
@@ -275,6 +285,43 @@ def _check_token_age(control_state: state_mod.ControlState, config: dict) -> Non
 			"Consider regenerating soon.",
 			age_hours, max_hours,
 		)
+
+
+#============================================
+# keys in raw payload that may contain sensitive identifiers
+_SENSITIVE_KEYS = {"devid", "sgsn", "sn", "token", "userid", "username"}
+
+
+#============================================
+def _dump_raw_payload(raw_data: dict, normalized: dict) -> None:
+	"""
+	Log the raw EP Cube API payload and normalized state at INFO level.
+
+	Masks values for keys that look like serial numbers, tokens, or user IDs.
+
+	Args:
+		raw_data: Original dict from the API response.
+		normalized: Normalized dict produced by epcube_client.
+	"""
+	# mask sensitive fields in a copy of the raw data
+	masked_raw = {}
+	for key, value in raw_data.items():
+		if key.lower() in _SENSITIVE_KEYS:
+			str_val = str(value)
+			if len(str_val) > 4:
+				masked_val = str_val[:2] + "***" + str_val[-2:]
+			else:
+				masked_val = "***"
+			masked_raw[key] = masked_val
+		else:
+			masked_raw[key] = value
+	# mask device_id in normalized copy
+	masked_norm = dict(normalized)
+	dev_id = masked_norm.get("device_id", "")
+	if dev_id and len(dev_id) > 4:
+		masked_norm["device_id"] = dev_id[:2] + "***" + dev_id[-2:]
+	logger.info("EP Cube raw payload: %s", json.dumps(masked_raw, indent=2))
+	logger.info("EP Cube normalized state: %s", json.dumps(masked_norm, indent=2))
 
 
 #============================================
@@ -318,6 +365,10 @@ def main() -> None:
 		return
 	# fetch EP Cube data
 	epcube_data, epcube_client = _fetch_epcube_data(config, control_state)
+	# dump raw payload if requested
+	if args.dump_raw and epcube_data is not None and epcube_client is not None:
+		raw = epcube_client.last_raw_data or {}
+		_dump_raw_payload(raw, epcube_data)
 	# determine battery SoC and solar power from device
 	if epcube_data is None:
 		# no device data available, hold current state

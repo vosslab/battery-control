@@ -99,7 +99,7 @@ def execute_wemo(action: decision_engine.Action, config: dict, dry_run: bool) ->
 	if action in (
 		decision_engine.Action.ALLOW_DISCHARGE,
 		decision_engine.Action.DISCHARGE_TO_FLOOR,
-		decision_engine.Action.DISCHARGE_PACED,
+		decision_engine.Action.DISCHARGE_ALLOWED,
 	):
 		# turn on discharge plug, turn off charge plug
 		logger.info("WeMo: discharging to grid")

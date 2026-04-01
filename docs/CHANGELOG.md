@@ -4,6 +4,14 @@
 
 ### Additions and New Features
 
+- Added `smart_home_power_watts`, `non_backup_power_watts`, and
+  `battery_power_watts` to `epcube_client.py` normalized output; `smartHomePower`
+  is the best candidate for total house load; updated controller status log to
+  show Load, Backup, NonBackup, and Batt fields
+- Added `--dump-raw` flag to `battery_controller.py` CLI; logs the raw EP Cube
+  API payload and normalized state dict at INFO level once per run, with sensitive
+  fields (device IDs, serial numbers) masked; in daemon mode, dumps only on the
+  first cycle then auto-strips the flag
 - Created `run_daemon.py` terminal loop runner for testing; calls the battery
   controller in a repeating loop with configurable delay (`-d`/`--delay`, default
   5 minutes), passes all other flags through to the controller, catches per-cycle
@@ -16,6 +24,20 @@
 
 ### Behavior or Interface Changes
 
+- Adopted EP Cube official mode names throughout: `Autoconsumo` renamed to
+  `Self-consumption`, `Tariffazione` renamed to `Time of Use`, `Backup` kept;
+  `target_mode` values changed from `"autoconsumo"` to `"self_consumption"`;
+  MODE_MAP updated in `epcube_client.py`
+- Rewrote `docs/STRATEGY.md` with full EP Cube hardware reference section
+  documenting all three modes (Self-consumption, Backup, Time of Use), their
+  charging sources, power priorities, and API data fields; documented the site
+  constraint that grid charging is not permitted, which means Backup mode should
+  only be used for short-term discharge blocking and Time of Use mode is not
+  suitable; added API field table mapping raw fields to normalized keys
+- Renamed `DISCHARGE_PACED` action to `DISCHARGE_ALLOWED` across the codebase;
+  the controller cannot set a discharge rate, only allow/block discharge and set
+  the reserve SoC floor; reason text now says "SoC X% above Y% floor, discharge
+  allowed" instead of "paced to N kWh/hr"
 - Changed `-c`/`--config` from required to optional with default `config.yml`;
   clear error message when missing suggests copying `config_example.yml`
 - Verbose mode (`-v`) now shows full decision reasoning at INFO level: season,

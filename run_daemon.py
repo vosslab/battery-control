@@ -60,6 +60,9 @@ def main() -> None:
 		except Exception as err:
 			now_str = datetime.datetime.now().strftime("%H:%M:%S")
 			print(f"  [{now_str}] ERROR in cycle {cycle_num}: {err}")
+		# strip --dump-raw after first cycle so it only fires once
+		if cycle_num == 1 and "--dump-raw" in sys.argv:
+			sys.argv.remove("--dump-raw")
 		# wait for next cycle
 		try:
 			next_run = datetime.datetime.now() + datetime.timedelta(seconds=delay_seconds)

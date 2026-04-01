@@ -77,8 +77,8 @@ class TestEpcubeClient:
 	#============================================
 	@mock.patch("battcontrol.epcube_client.requests.post")
 	@mock.patch("battcontrol.epcube_client.time.sleep")
-	def test_set_mode_autoconsumo(self, mock_sleep, mock_post):
-		"""Set mode 1 (Autoconsumo) with reserve SoC."""
+	def test_set_mode_self_consumption(self, mock_sleep, mock_post):
+		"""Set mode 1 (Self-consumption) with reserve SoC."""
 		mock_resp = mock.Mock()
 		mock_resp.status_code = 200
 		mock_resp.json.return_value = {"code": 200}

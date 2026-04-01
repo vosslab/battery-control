@@ -20,10 +20,10 @@ BASE_URLS = {
 	"JP": "https://monitoring-jp.epcube.com/api",
 }
 
-# mode map matching the HA integration
+# EP Cube operating mode names (from official datasheet)
 MODE_MAP = {
-	"1": "Autoconsumo",
-	"2": "Tariffazione",
+	"1": "Self-consumption",
+	"2": "Time of Use",
 	"3": "Backup",
 }
 REVERSE_MODE_MAP = {v: k for k, v in MODE_MAP.items()}
@@ -68,6 +68,8 @@ class EpcubeClient:
 		self.device_sn = device_sn
 		self.base_url = _get_base_url(region)
 		self._device_id = None
+		# stores the last raw API response for debugging
+		self.last_raw_data = None
 		self._headers = {
 			"accept": "*/*",
 			"content-type": "application/json",
@@ -148,7 +150,8 @@ class EpcubeClient:
 			dict: Normalized device data with keys:
 				battery_soc (int), solar_power_watts (float),
 				grid_power_watts (float), backup_power_watts (float),
-				work_status (str), device_id (str).
+				smart_home_power_watts (float), non_backup_power_watts (float),
+				battery_power_watts (float), work_status (str), device_id (str).
 			Returns None if token is expired or request fails.
 		"""
 		endpoint = f"/device/homeDeviceInfo?&sgSn={self.device_sn}"
@@ -159,6 +162,8 @@ class EpcubeClient:
 		if not raw_data:
 			logger.warning("EP Cube returned empty device data")
 			return None
+		# store raw payload for debugging (available via client.last_raw_data)
+		self.last_raw_data = raw_data
 		# normalize keys to lowercase for consistent access
 		data = {k.lower(): v for k, v in raw_data.items()}
 		# extract and store device ID for mode switching
@@ -169,6 +174,9 @@ class EpcubeClient:
 		solar_power = _safe_float(data.get("solarpower", 0)) * 10
 		grid_power = _safe_float(data.get("gridpower", 0)) * 10
 		backup_power = _safe_float(data.get("backuppower", 0)) * 10
+		smart_home_power = _safe_float(data.get("smarthomepower", 0)) * 10
+		non_backup_power = _safe_float(data.get("nonbackuppower", 0)) * 10
+		battery_power = _safe_float(data.get("batterypower", 0)) * 10
 		battery_soc = _safe_int(data.get("batterysoc", 0))
 		work_status = str(data.get("workstatus", ""))
 		normalized = {
@@ -176,6 +184,9 @@ class EpcubeClient:
 			"solar_power_watts": solar_power,
 			"grid_power_watts": grid_power,
 			"backup_power_watts": backup_power,
+			"smart_home_power_watts": smart_home_power,
+			"non_backup_power_watts": non_backup_power,
+			"battery_power_watts": battery_power,
 			"work_status": work_status,
 			"device_id": str(device_id),
 		}
@@ -204,7 +215,7 @@ class EpcubeClient:
 		Set the EP Cube operating mode.
 
 		Args:
-			mode: Mode number (1=Autoconsumo, 3=Backup).
+			mode: Mode number (1=Self-consumption, 3=Backup).
 			reserve_soc: Reserve SoC percentage for the mode.
 
 		Returns:
@@ -221,7 +232,7 @@ class EpcubeClient:
 		}
 		# add mode-specific parameters
 		if mode == 1:
-			# Autoconsumo: set self-consumption reserve SoC
+			# Self-consumption: set reserve SoC
 			soc_value = reserve_soc if reserve_soc is not None else 15
 			payload["selfConsumptioinReserveSoc"] = str(soc_value)
 		elif mode == 3:
@@ -260,7 +271,7 @@ def execute_epcube(decision_result, client: EpcubeClient, config: dict, dry_run:
 	if target_mode == "backup":
 		mode_num = 3
 		reserve_soc = soc_floor
-	elif target_mode == "autoconsumo":
+	elif target_mode == "self_consumption":
 		mode_num = 1
 		reserve_soc = soc_floor
 	else:

@@ -230,7 +230,7 @@ class TestPeakLogic:
 			comed_price_cents=15.0, comed_median_cents=8.0,
 			config=config, control_state=cs, current_time=now,
 		)
-		assert result.action == decision_engine.Action.DISCHARGE_PACED
+		assert result.action == decision_engine.Action.DISCHARGE_ALLOWED
 		assert result.price_band == "mid_high"
 		assert result.max_discharge_kwh_this_hour > 0
 

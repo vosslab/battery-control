@@ -19,7 +19,7 @@ class Action(enum.Enum):
 	ALLOW_DISCHARGE = "allow_discharge"
 	FORCE_NO_DISCHARGE = "force_no_discharge"
 	DISCHARGE_TO_FLOOR = "discharge_to_floor"
-	DISCHARGE_PACED = "discharge_paced"
+	DISCHARGE_ALLOWED = "discharge_allowed"
 	CHARGE_FROM_GRID = "charge_from_grid"
 
 
@@ -33,7 +33,7 @@ class DecisionResult:
 		reason: Human-readable explanation.
 		soc_floor: Minimum SoC percentage to maintain.
 		price_band: Current price band name.
-		target_mode: EP Cube target mode ('autoconsumo', 'backup', or '').
+		target_mode: EP Cube mode ('self_consumption', 'backup', or '').
 		max_discharge_kwh_this_hour: Pacing limit for discharge.
 	"""
 
@@ -260,7 +260,7 @@ def _daylight_logic(
 				action=Action.ALLOW_DISCHARGE,
 				reason=f"Creating headroom: SoC {battery_soc}% >= {band_high}%, extreme price",
 				soc_floor=band_low,
-				target_mode="autoconsumo",
+				target_mode="self_consumption",
 			)
 		# not exporting or price is cheap, hold
 		logger.info(
@@ -286,7 +286,7 @@ def _daylight_logic(
 			reason=f"No surplus, extreme price {comed_price_cents:.1f}c >= {extreme_threshold}c",
 			soc_floor=extreme_floor,
 			price_band="extreme",
-			target_mode="autoconsumo",
+			target_mode="self_consumption",
 		)
 	# B.3b: preserve for evening
 	logger.info(
@@ -335,7 +335,7 @@ def _night_logic(
 			reason=f"Night extreme price {comed_price_cents:.1f}c, discharging to floor {night_floor}%",
 			soc_floor=night_floor,
 			price_band="extreme",
-			target_mode="autoconsumo",
+			target_mode="self_consumption",
 		)
 	# otherwise hold
 	logger.info(
@@ -413,28 +413,29 @@ def _peak_logic(
 			reason=f"Peak high band: price {comed_price_cents:.1f}c, discharge to floor {soc_floor}%",
 			soc_floor=soc_floor,
 			price_band=price_band,
-			target_mode="autoconsumo",
+			target_mode="self_consumption",
 			max_discharge_kwh_this_hour=max_discharge * 2,
 		)
-	# mid bands: discharge with pacing
-	# compute remaining peak hours for the log
+	# mid bands: discharge allowed with floor chosen by pacing heuristic
+	# pacing selects a conservative floor to preserve energy for later peak hours
 	peak_end = config.get("peak_window_end", 22)
 	remaining_hours = max(peak_end - current_time.hour, 1)
 	usable_pct = max(battery_soc - soc_floor, 0)
 	capacity = config.get("battery_capacity_kwh", 20.0)
 	usable_kwh = capacity * usable_pct / 100.0
 	logger.info(
-		"Discharging paced: price %.1fc in '%s' band, "
-		"%.1f kWh usable, %d hrs left -> %.1f kWh/hr max",
+		"Discharge allowed: price %.1fc in '%s' band, "
+		"SoC %d%% above %d%% floor, %.1f kWh usable over %d hrs",
 		comed_price_cents, price_band,
-		usable_kwh, remaining_hours, max_discharge,
+		battery_soc, soc_floor, usable_kwh, remaining_hours,
 	)
 	return DecisionResult(
-		action=Action.DISCHARGE_PACED,
-		reason=f"Peak {price_band}: price {comed_price_cents:.1f}c, paced to {max_discharge:.1f} kWh/hr",
+		action=Action.DISCHARGE_ALLOWED,
+		reason=(f"Peak {price_band}: SoC {battery_soc}% above "
+			f"{soc_floor}% floor, discharge allowed"),
 		soc_floor=soc_floor,
 		price_band=price_band,
-		target_mode="autoconsumo",
+		target_mode="self_consumption",
 		max_discharge_kwh_this_hour=max_discharge,
 	)
 
