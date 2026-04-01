@@ -4,6 +4,10 @@
 
 ### Additions and New Features
 
+- Created `run_daemon.py` terminal loop runner for testing; calls the battery
+  controller in a repeating loop with configurable delay (`-d`/`--delay`, default
+  5 minutes), passes all other flags through to the controller, catches per-cycle
+  errors so the loop continues, and exits cleanly on Ctrl+C
 - Created `run_battery_controller.py` root stub script for discoverable entry point;
   delegates to `battcontrol.battery_controller.main()` with no logic duplication
 - Added decision-path logging to `battcontrol/decision_engine.py` so verbose mode
