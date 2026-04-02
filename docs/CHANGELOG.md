@@ -2,6 +2,29 @@
 
 ## 2026-04-01
 
+### Fixes and Maintenance
+
+- Rewrote [docs/CODE_ARCHITECTURE.md](CODE_ARCHITECTURE.md) to match current
+  two-state strategy model; removed all references to hysteresis, daylight/night
+  routing, sections A-F, and old three-action vocabulary
+- Updated [docs/FILE_STRUCTURE.md](FILE_STRUCTURE.md): added missing modules
+  (strategy.py, command_buffer.py, hourly_logger.py, epcube_login.py,
+  epcube_captcha.py), added missing scripts (replay_strategy.py,
+  daily_summary.py), added devel/ subtree, added missing docs
+  (EPCUBE_API_FIELDS.md, EPCUBE_MODE_BEHAVIOR.md), added missing generated
+  artifacts (epcube_*.json, hourly CSV), removed references to nonexistent
+  test files (test_decision_engine.py, test_state.py), fixed stale
+  descriptions of decision_engine.py and state.py
+- Updated [docs/USAGE.md](USAGE.md) state file description to list actual fields
+  (last strategy state, last EP Cube command, token status) instead of old
+  hysteresis fields
+- Updated [README.md](../README.md) overview to describe reserve SoC management
+  instead of charge/discharge/hold decisions; fixed strategy doc reference
+- Cleaned live config.yml: removed 6 stale keys (afternoon_target_soc_pct,
+  peak_window_start, peak_window_end, extreme_price_threshold, night_floor_pct,
+  solar_sunset_threshold_watts, solar_sunset_duration_minutes), added
+  time-period adjustment keys
+
 ### Additions and New Features
 
 - Added time-period reserve adjustment on top of price-mapped floor in

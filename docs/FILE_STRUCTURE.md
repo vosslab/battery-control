@@ -14,6 +14,8 @@ battery-control/
 +- run_daemon.py               repeating loop runner
 +- epcube_get_token.py         EP Cube token generator
 +- epcube_setup.py             interactive EP Cube setup wizard
++- replay_strategy.py          replay strategy against historical CSV
++- daily_summary.py            aggregate hourly history into daily metrics
 +- config.yml                  active config (git-ignored)
 +- config_example.yml          example config (committed)
 +- source_me.sh                Python environment bootstrap
@@ -33,9 +35,14 @@ Core package with no `__init__.py` (imported via `sys.path` or module path).
 | File | Purpose |
 | --- | --- |
 | [battery_controller.py](battcontrol/battery_controller.py) | Main orchestrator: fetch data, decide, actuate |
-| [decision_engine.py](battcontrol/decision_engine.py) | Strategy flowchart logic (sections A-F) |
+| [strategy.py](battcontrol/strategy.py) | Pure policy function (price vs cutoff, reserve SoC) |
+| [decision_engine.py](battcontrol/decision_engine.py) | Thin orchestrator, delegates to strategy.py |
+| [command_buffer.py](battcontrol/command_buffer.py) | Deadband filter for EP Cube command suppression |
 | [config.py](battcontrol/config.py) | YAML config loader, defaults, price interpolation |
-| [state.py](battcontrol/state.py) | JSON-persisted hysteresis and control state |
+| [state.py](battcontrol/state.py) | JSON-persisted control state and command tracking |
+| [hourly_logger.py](battcontrol/hourly_logger.py) | Hourly CSV logger for cycle data |
+| [epcube_login.py](battcontrol/epcube_login.py) | EP Cube login flow and token management |
+| [epcube_captcha.py](battcontrol/epcube_captcha.py) | CAPTCHA solver using OpenCV template matching |
 | [comedlib.py](battcontrol/comedlib.py) | ComEd real-time pricing client |
 | [epcube_client.py](battcontrol/epcube_client.py) | EP Cube cloud API client |
 | [wemo_actuator.py](battcontrol/wemo_actuator.py) | WeMo smart plug controller |
@@ -47,9 +54,6 @@ Pytest test suite. All files follow the `test_*.py` naming convention.
 | File | Covers |
 | --- | --- |
 | test_config.py | Config loading, price interpolation, validation |
-| test_decision_engine.py | Strategy flowchart decision paths |
-| test_state.py | Hysteresis and state persistence |
-| test_smoke_battery_controller.py | CLI argument parsing |
 | test_epcube_client.py | EP Cube API client |
 | test_epcube_get_token.py | Token generation |
 | test_wemo_actuator.py | WeMo plug control |
@@ -83,9 +87,20 @@ Utility scripts in tests:
 | [PYTHON_STYLE.md](docs/PYTHON_STYLE.md) | Python coding conventions |
 | [REPO_STYLE.md](docs/REPO_STYLE.md) | Repository layout conventions |
 | [MARKDOWN_STYLE.md](docs/MARKDOWN_STYLE.md) | Markdown formatting rules |
+| [EPCUBE_API_FIELDS.md](docs/EPCUBE_API_FIELDS.md) | EP Cube API field reference |
+| [EPCUBE_MODE_BEHAVIOR.md](docs/EPCUBE_MODE_BEHAVIOR.md) | EP Cube mode behavior and capabilities |
 | [CLAUDE_HOOK_USAGE_GUIDE.md](docs/CLAUDE_HOOK_USAGE_GUIDE.md) | Claude Code permissions hook guide |
+| [FILE_STRUCTURE.md](docs/FILE_STRUCTURE.md) | Directory layout and file purposes |
 
 PDF datasheets for the EP Cube hardware are also stored in `docs/`.
+
+### [devel/](devel/)
+
+Developer utility scripts, not part of the main application.
+
+| File | Purpose |
+| --- | --- |
+| [commit_changelog.py](devel/commit_changelog.py) | Helper for committing changelog updates |
 
 ## Generated artifacts
 
@@ -94,7 +109,9 @@ PDF datasheets for the EP Cube hardware are also stored in `docs/`.
 | Controller log | `battery_controller.log` | ignored |
 | Active config | `config.yml` | ignored |
 | Auth credentials | `epcube_auth.yml` | ignored |
+| Raw EP Cube dumps | `epcube_*.json` | ignored |
 | CAPTCHA debug output | `output/` | ignored |
+| Hourly history CSV | `data/hourly_history.csv` | ignored |
 | Temp scratch files | `_*.py`, `_*.sh` | ignored |
 
 ## Where to add new work

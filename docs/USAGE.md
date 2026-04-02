@@ -52,14 +52,12 @@ Run every 3 minutes to match ComEd's 5-minute price feed:
 
 ## State file
 
-The controller writes hysteresis and tracking state to a JSON file (default
+The controller writes control state to a JSON file (default
 `/tmp/battery_control_state.json`). This file persists between runs and tracks:
 
-- Price band counters for hysteresis
-- Action stability counters for token friction
-- Peak mode activation state
-- Token expiration status
-- Last known battery SoC (fallback when EP Cube is unreachable)
+- Last strategy state (below/above cutoff) for deadband continuity
+- Last EP Cube command (mode, reserve SoC, timestamp) for command buffering
+- Token expiration status for auto-renewal
 
 ## Token management
 

@@ -1,10 +1,11 @@
 # battery-control
 
-Battery arbitrage controller for ComEd real-time pricing with EP Cube and
+Battery reserve controller for ComEd real-time pricing with EP Cube and
 WeMo-controlled battery systems. Manages two physically separate batteries
 (EP Cube 20 kWh via cloud API, WeMo-controlled battery via smart plugs),
-making charge/discharge/hold decisions every 3 minutes based on real-time
-electricity prices and solar production.
+setting reserve SoC every 3 minutes based on real-time electricity prices.
+The EP Cube runs in self-consumption mode; the reserve floor controls how
+much battery is available to serve house load.
 
 ## Quick start
 
@@ -36,7 +37,7 @@ source source_me.sh && python3 -m pytest tests/ -v
 
 ## Documentation
 
-- [docs/STRATEGY.md](docs/STRATEGY.md): battery control strategy flowchart (sections A-F).
+- [docs/STRATEGY.md](docs/STRATEGY.md): battery control strategy (price vs cutoff, reserve SoC).
 - [docs/USAGE.md](docs/USAGE.md): CLI usage, cron setup, and token management.
 - [docs/CODE_ARCHITECTURE.md](docs/CODE_ARCHITECTURE.md): system design and data flow.
 - [docs/FILE_STRUCTURE.md](docs/FILE_STRUCTURE.md): directory layout and file purposes.
