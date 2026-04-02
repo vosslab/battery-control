@@ -11,6 +11,13 @@
 - Added `validate_time_adjust()` in config.py to validate hour ranges,
   non-overlap, and non-negative adjustment
 
+### Fixes and Maintenance
+
+- Fixed `HourlyLogger` never flushing hourly CSV rows: the logger was
+  re-created inside `main()` every cycle, so `current_hour` was always
+  `None` and hour boundaries were never detected; moved to a module-level
+  `HOURLY_LOGGER` that persists across `run_daemon.py` cycles
+
 ### Removals and Deprecations
 
 - Removed night clamp from ABOVE_CUTOFF path: `_is_solar_available()`,

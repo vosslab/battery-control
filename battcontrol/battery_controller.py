@@ -24,6 +24,10 @@ import battcontrol.epcube_login
 
 logger = logging.getLogger(__name__)
 
+# module-level hourly logger, persists across main() calls so hour
+# boundaries are detected when run_daemon.py invokes main() repeatedly
+HOURLY_LOGGER = None
+
 
 #============================================
 def parse_args() -> argparse.Namespace:
@@ -462,9 +466,12 @@ def main() -> None:
 	# default comes from config.DEFAULTS which uses tempfile.gettempdir()
 	control_state = battcontrol.state.ControlState(state_path)
 	control_state.load()
-	# initialize hourly logger for persistent CSV history
+	# reuse module-level hourly logger so it persists across daemon cycles
+	global HOURLY_LOGGER
 	csv_path = config.get("hourly_csv_path", "data/hourly_history.csv")
-	hourly_logger = battcontrol.hourly_logger.HourlyLogger(csv_path)
+	if HOURLY_LOGGER is None:
+		HOURLY_LOGGER = battcontrol.hourly_logger.HourlyLogger(csv_path)
+	hourly_logger = HOURLY_LOGGER
 	# fetch ComEd price
 	comed_price, comed_median, comed_cutoff = _fetch_comed_price()
 	if comed_price is None:
