@@ -1,0 +1,3 @@
+hour_start,season,comed_price,comed_price_median,comed_cutoff,start_soc,end_soc,grid_kwh,solar_kwh,load_kwh,battery_charge_kwh,battery_discharge_kwh,policy_action,epcube_mode,reserve_soc,sample_count,used_fallback_power_integration
+2026-04-01 19:00,shoulder,4.8,4.1,6.4,79,79,0.830,0.000,0.740,0.000,0.000,STARTUP,self_consumption,100,0,False
+2026-04-01 19:00,shoulder,4.1,4.0,6.3,79,79,0.210,0.000,0.180,0.000,0.000,below_cutoff,self_consumption,100,14,False

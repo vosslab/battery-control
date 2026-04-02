@@ -321,8 +321,7 @@ def print_table(daily_summaries: list) -> None:
 	# try to use tabulate if available
 	try:
 		import tabulate
-		headers = list(daily_summaries[0].keys())
-		table = tabulate.tabulate(daily_summaries, headers=headers, tablefmt='grid')
+		table = tabulate.tabulate(daily_summaries, headers="keys", tablefmt='grid')
 		print(table)
 	except ImportError:
 		# fallback: simple column printing
