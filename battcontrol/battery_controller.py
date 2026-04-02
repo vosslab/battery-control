@@ -20,6 +20,7 @@ import battcontrol.command_buffer
 import battcontrol.hourly_logger
 import battcontrol.epcube_client
 import battcontrol.wemo_actuator
+import battcontrol.cutoff_adjust
 import battcontrol.epcube_login
 
 logger = logging.getLogger(__name__)
@@ -495,6 +496,12 @@ def main() -> None:
 	battery_soc = epcube_data.get("battery_soc", 0)
 	solar_power = epcube_data.get("solar_power_watts", 0)
 	load_power = _select_load_source(epcube_data)
+	# adjust cutoff based on battery SoC
+	comed_cutoff = battcontrol.cutoff_adjust.adjust_cutoff(
+		raw_cutoff_cents=comed_cutoff,
+		battery_soc=battery_soc,
+		config=config,
+	)
 	# run decision engine
 	result = battcontrol.decision_engine.decide(
 		battery_soc=battery_soc,

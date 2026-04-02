@@ -49,6 +49,13 @@ DEFAULTS = {
 	"evening_adjust_end_hour": 23,
 	"morning_adjust_start_hour": 2,
 	"morning_adjust_end_hour": 10,
+	# cutoff adjustment: SoC-based wrapper around comedlib cutoff
+	"cutoff_adjust_soc_high_threshold": 85,
+	"cutoff_adjust_soc_low_threshold": 25,
+	"cutoff_adjust_soc_high_cents": 1.0,
+	"cutoff_adjust_soc_low_cents": 1.0,
+	"cutoff_adjust_min_cents": 2.0,
+	"cutoff_adjust_max_cents": 12.0,
 	# season auto-detection or manual override
 	"season": "auto",
 	# EP Cube connection settings

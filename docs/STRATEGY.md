@@ -69,10 +69,50 @@ The price fed to the decision engine is not the instantaneous ComEd rate. It com
 
 ### Price input: usage cutoff
 
-The controller also fetches `comedlib.getReasonableCutOff()`, a time-aware cutoff price that determines whether energy should be conserved or consumed. The cutoff starts from the 75th percentile of 24-hour rates, adjusts for weekends (+0.9c), late night (+0.8c), and solar peak hours (Gaussian bonus up to +1.5c centered at noon), with a floor of 1.0c.
+The controller fetches `comedlib.getReasonableCutOff()`, a time-aware cutoff price that determines whether energy should be conserved or consumed.
 
-- If predicted rate > cutoff: **above cutoff** (prices are high, allow battery discharge)
-- If predicted rate <= cutoff: **below cutoff** (prices are low, hold battery, charge from solar)
+#### comedlib cutoff baseline
+
+`getReasonableCutOff()` was originally designed for load-adding devices (car charger, A/C thermostat) where a higher cutoff means "the price is reasonable enough to add load." It builds the cutoff from:
+
+1. Base price (10.1c) blended with the 75th-percentile of 24-hour rates
+2. Weekend bonus (+0.9c on Saturday/Sunday): weekends are typically cheaper, raise the bar
+3. Late-night bonus (+0.8c for hours 23:00-05:00): late-night prices are cheap, raise the bar
+4. Solar-peak bonus (Gaussian centered at noon, max +1.5c, hours 6-20): solar is likely generating, so adding load is acceptable at moderate prices
+5. Floor of 1.0c minimum
+
+For battery control, these bonuses happen to work in the right direction: a higher cutoff makes the battery more conservative (fewer prices exceed it, so the battery holds more often). Weekend/late-night conservatism is reasonable (discharge later when prices rise). Solar-peak conservatism is reasonable (let the battery fill from solar).
+
+comedlib does not know actual battery SoC, actual solar production, or actual load. The solar-peak bonus is purely time-based -- it raises the cutoff at noon whether the sky is clear or overcast.
+
+#### SoC-based cutoff adjustment
+
+After fetching the comedlib cutoff, the controller applies an additive SoC-based adjustment via `cutoff_adjust.adjust_cutoff()`. This follows the same wrapper pattern used by `wemoPlug-comed-multi.py` (bounds clamp + bias) and `thermostat-comed.py` (temperature-based bonus).
+
+The adjustment is a monotonic linear interpolation between two SoC thresholds:
+
+- SoC >= high threshold (default 85%): full negative adjustment (-1.0c), lowering the cutoff so more prices trigger discharge
+- SoC <= low threshold (default 25%): full positive adjustment (+1.0c), raising the cutoff to conserve battery
+- Between thresholds: linear interpolation (zero at midpoint ~55%)
+- Final result clamped to [2.0, 12.0] cents
+
+**Why this does not double-count with comedlib:** neither comedlib function uses battery SoC in any way. The comedlib solar-peak bonus (time-based) and the SoC wrapper (charge-level-based) are independent axes. They can reinforce (low SoC at noon: both raise cutoff) or partially cancel (high SoC at noon: SoC pushes down, solar-peak pushes up). Both behaviors are correct.
+
+**Why this does not double-count with strategy:** the strategy uses SoC in two places: (1) hard reserve guard (fires regardless of price), and (2) negative-price headroom exception (fires only for negative prices). Neither overlaps with the cutoff wrapper, which adjusts the price threshold that determines whether we enter the discharge path at all.
+
+#### Decision summary
+
+- If predicted rate > adjusted cutoff: **above cutoff** (prices are high, allow battery discharge)
+- If predicted rate <= adjusted cutoff: **below cutoff** (prices are low, hold battery, charge from solar)
+
+#### Decision layers
+
+The full decision pipeline has four layers, each operating on a different axis:
+
+1. **comedlib baseline**: time-of-day heuristics set the raw cutoff (price axis)
+2. **SoC wrapper**: adjusts the cutoff based on battery charge level (price axis)
+3. **Strategy decision**: compares predicted price to adjusted cutoff with deadband (state axis)
+4. **Time-period floor**: adjusts the reserve SoC floor for evening/morning (reserve axis)
 
 ## Flow chart
 
@@ -167,4 +207,4 @@ The command buffer prevents flapping by requiring the desired EP Cube state to b
 
 ## Summary
 
-The controller uses two strategy states (`BELOW_CUTOFF`, `ABOVE_CUTOFF`) driven by predicted price vs cutoff. Both states use self-consumption mode; only the reserve SoC changes. Below cutoff: reserve 100%, battery is preserved, load supplied by grid when solar is insufficient. Above cutoff: reserve follows the price map adjusted by time period, battery can serve load down to that reserve. The inverter handles actual power flow based on house load and solar availability. Three seasons (summer, shoulder, winter) drive discharge floor behavior. Time-of-day effects come through two mechanisms: the comedlib cutoff (which adjusts for solar peak hours, late night, and weekends), and the time-period reserve adjustment (evening +5%, morning -5% on the interpolated floor).
+The controller uses two strategy states (`BELOW_CUTOFF`, `ABOVE_CUTOFF`) driven by predicted price vs cutoff. Both states use self-consumption mode; only the reserve SoC changes. Below cutoff: reserve 100%, battery is preserved, load supplied by grid when solar is insufficient. Above cutoff: reserve follows the price map adjusted by time period, battery can serve load down to that reserve. The inverter handles actual power flow based on house load and solar availability. Three seasons (summer, shoulder, winter) drive discharge floor behavior. Price-threshold effects come through three layers: the comedlib cutoff (time-of-day heuristics), the SoC-based cutoff adjustment (battery charge level), and the cutoff deadband (state persistence). Reserve-floor effects come through the time-period adjustment (evening +5%, morning -5% on the interpolated floor).

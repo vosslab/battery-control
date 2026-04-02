@@ -46,6 +46,20 @@ evening_adjust_end_hour: 23
 morning_adjust_start_hour: 2
 morning_adjust_end_hour: 10
 
+# --- Cutoff Adjustment ---
+# SoC-based wrapper around comedlib cutoff price.
+# High SoC lowers the cutoff (more willing to discharge).
+# Low SoC raises the cutoff (conserve battery).
+# Thresholds define where the adjustment reaches full magnitude.
+cutoff_adjust_soc_high_threshold: 85
+cutoff_adjust_soc_low_threshold: 25
+# Adjustment magnitude in cents at each threshold
+cutoff_adjust_soc_high_cents: 1.0
+cutoff_adjust_soc_low_cents: 1.0
+# Bounds: final adjusted cutoff is clamped to this range
+cutoff_adjust_min_cents: 2.0
+cutoff_adjust_max_cents: 12.0
+
 # Season: 'auto' (May-Sep=summer), 'summer', or 'winter'
 season: auto
 

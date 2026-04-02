@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-04-02
+
+### Additions and New Features
+
+- Added SoC-based cutoff adjustment wrapper (`battcontrol/cutoff_adjust.py`):
+  lowers comedlib cutoff when battery is full (more willing to discharge),
+  raises it when battery is low (conserve for expensive peaks); follows the
+  same additive wrapper pattern used by `wemoPlug-comed-multi.py` and
+  `thermostat-comed.py`; pure function with monotonic linear interpolation
+  between configurable SoC thresholds, final cutoff clamped to [2.0, 12.0]c
+- Added 6 config keys (`cutoff_adjust_soc_high_threshold`,
+  `cutoff_adjust_soc_low_threshold`, `cutoff_adjust_soc_high_cents`,
+  `cutoff_adjust_soc_low_cents`, `cutoff_adjust_min_cents`,
+  `cutoff_adjust_max_cents`) with sensible defaults
+- Added cutoff adjustment section to `config_example.yml`
+- Added `tests/test_cutoff_adjust.py` with 12 test cases covering
+  midpoint passthrough, threshold endpoints, monotonic interpolation,
+  bounds clamping, and invalid config validation
+- Updated [docs/STRATEGY.md](STRATEGY.md) with comedlib design context
+  (load-adding device origin), SoC wrapper documentation, overlap analysis,
+  and four-layer decision pipeline description
+
 ## 2026-04-01
 
 ### Additions and New Features
