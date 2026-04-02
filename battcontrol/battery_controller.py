@@ -517,6 +517,9 @@ def main() -> None:
 		result=result,
 		config=config,
 	)
+	# write a STARTUP row on the first cycle so the CSV confirms the logger is alive
+	if not hourly_logger.startup_written:
+		hourly_logger.write_startup_entry(config)
 	# command buffer: only send EP Cube update when command changes materially
 	desired_mode = result.target_mode
 	desired_reserve = result.soc_floor

@@ -64,6 +64,9 @@ class HourlyLogger:
 		self.used_fallback = False
 		# previous cycle time for interval estimation
 		self.last_cycle_time = None
+		# startup tracking
+		self.startup_written = False
+		self.latest_epcube_data = None
 
 	#============================================
 	def record_cycle(
@@ -120,6 +123,51 @@ class HourlyLogger:
 		self._accumulate_power(epcube_data, interval_seconds)
 
 		self.last_cycle_time = now
+		self.latest_epcube_data = epcube_data
+
+	#============================================
+	def write_startup_entry(self, config: dict) -> None:
+		"""
+		Write a STARTUP row to CSV using snapshot power projected over one hour.
+
+		Called once after the first record_cycle() so real device data is available.
+
+		Args:
+			config: Configuration dictionary.
+		"""
+		if self.startup_written:
+			return
+		# estimate kWh by projecting snapshot watts over one hour
+		epcube = self.latest_epcube_data or {}
+		grid_kwh = (epcube.get("grid_power_watts") or 0) / 1000.0
+		solar_kwh = (epcube.get("solar_power_watts") or 0) / 1000.0
+		load_kwh = (epcube.get("smart_home_power_watts") or 0) / 1000.0
+		# season from config
+		now = self.hour_start_time or datetime.datetime.now()
+		season = battcontrol.config.get_season(config, now)
+		# build row with real prices/SoC and snapshot-estimated energy
+		row_dict = {
+			"hour_start": now.strftime("%Y-%m-%d %H:%M"),
+			"season": season,
+			"comed_price": f"{self.latest_price:.1f}" if self.latest_price is not None else "",
+			"comed_price_median": f"{self.latest_median:.1f}" if self.latest_median is not None else "",
+			"comed_cutoff": f"{self.latest_cutoff:.1f}" if self.latest_cutoff is not None else "",
+			"start_soc": self.latest_soc if self.latest_soc is not None else "",
+			"end_soc": self.latest_soc if self.latest_soc is not None else "",
+			"grid_kwh": f"{grid_kwh:.3f}",
+			"solar_kwh": f"{solar_kwh:.3f}",
+			"load_kwh": f"{load_kwh:.3f}",
+			"battery_charge_kwh": "0.000",
+			"battery_discharge_kwh": "0.000",
+			"policy_action": "STARTUP",
+			"epcube_mode": self.latest_mode or "",
+			"reserve_soc": self.latest_reserve or "",
+			"sample_count": 0,
+			"used_fallback_power_integration": "False",
+		}
+		self._write_csv_row(row_dict)
+		self.startup_written = True
+		logger.info("Startup entry written to %s", self.csv_path)
 
 	#============================================
 	def _extract_counters(self, epcube_data: dict) -> dict:

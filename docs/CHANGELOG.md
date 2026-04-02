@@ -2,6 +2,13 @@
 
 ## 2026-04-01
 
+### Additions and New Features
+
+- Added STARTUP row to hourly CSV logger: on first daemon cycle, writes a row
+  with real prices, SoC, mode, and snapshot power projected over one hour for
+  kWh estimates; `policy_action` = `"STARTUP"` and `sample_count` = 0
+  distinguish it from regular hourly rows
+
 ### Fixes and Maintenance
 
 - Rewrote [docs/CODE_ARCHITECTURE.md](CODE_ARCHITECTURE.md) to match current
