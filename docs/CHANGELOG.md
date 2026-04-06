@@ -2,6 +2,14 @@
 
 ## 2026-04-06
 
+### Behavior or Interface Changes
+
+- Changed headroom from reactive (any-hour negative price trigger) to proactive
+  solar-prep: now fires only during hours 8-14 when prices are below 2.0c, creating
+  room for solar absorption before negative prices arrive. After the solar peak,
+  normal cutoff logic applies instead of headroom. New config keys:
+  `headroom_price_threshold_cents`, `headroom_start_hour`, `headroom_end_hour`
+
 ### Additions and New Features
 
 - Added `get_device_info()` and `get_energy_stats()` methods to

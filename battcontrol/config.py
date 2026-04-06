@@ -55,6 +55,10 @@ CONFIG_SCHEMA = {
 	# headroom band for near-full battery during solar surplus
 	"headroom_band_low": {"type": int, "default": 85, "min": 0, "max": 100},
 	"headroom_band_high": {"type": int, "default": 95, "min": 0, "max": 100},
+	# headroom trigger: price threshold and time window for proactive headroom
+	"headroom_price_threshold_cents": {"type": float, "default": 2.0, "min": 0.0},
+	"headroom_start_hour": {"type": int, "default": 8, "min": 0, "max": 23},
+	"headroom_end_hour": {"type": int, "default": 14, "min": 0, "max": 23},
 	# cutoff buffer: deadband half-width in cents
 	"cutoff_buffer_cents": {"type": float, "default": 0.5, "min": 0.0},
 	# command buffer: minimum SoC change to trigger EP Cube update

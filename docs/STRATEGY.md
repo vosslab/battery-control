@@ -98,7 +98,7 @@ The adjustment is a monotonic linear interpolation between two SoC thresholds:
 
 **Why this does not double-count with comedlib:** neither comedlib function uses battery SoC in any way. The comedlib solar-peak bonus (time-based) and the SoC wrapper (charge-level-based) are independent axes. They can reinforce (low SoC at noon: both raise cutoff) or partially cancel (high SoC at noon: SoC pushes down, solar-peak pushes up). Both behaviors are correct.
 
-**Why this does not double-count with strategy:** the strategy uses SoC in two places: (1) hard reserve guard (fires regardless of price), and (2) negative-price headroom exception (fires only for negative prices). Neither overlaps with the cutoff wrapper, which adjusts the price threshold that determines whether we enter the discharge path at all.
+**Why this does not double-count with strategy:** the strategy uses SoC in two places: (1) hard reserve guard (fires regardless of price), and (2) proactive headroom exception (fires for low/negative prices during solar hours). Neither overlaps with the cutoff wrapper, which adjusts the price threshold that determines whether we enter the discharge path at all.
 
 #### Decision summary
 
@@ -144,7 +144,7 @@ Goal: do not spend battery. Grid is cheap.
 
 - Self-consumption mode, reserve 100%
 - Physical outcome: solar charges battery if surplus, grid covers any deficit, battery does not discharge
-- Exception: negative price headroom. If SoC >= 95% and price is negative, set reserve to 85% to create room for solar absorption instead of exporting at a loss
+- Exception: proactive headroom. If SoC >= 95% and price < 2.0c during hours 8-14, set reserve to 85% to create room for solar absorption before negative prices arrive. Only fires during the solar-prep window; after the solar peak, normal cutoff logic applies. Configurable via `headroom_price_threshold_cents`, `headroom_start_hour`, `headroom_end_hour`
 
 ### D. Above cutoff (expensive grid)
 
@@ -257,6 +257,47 @@ solar, 22.4 kWh load, 26.6 kWh exported), strategy differences were
 negligible because forced export volume far exceeds battery capacity.
 Strategy tuning has leverage on mixed days (moderate solar, price volatility)
 like Apr 3, not on solar-saturated days.
+
+### Negative price solar penalty
+
+When solar production coincides with negative ComEd prices, we are literally
+paying to have solar. Export compensation is at the hourly ComEd rate, so
+exporting during negative prices means we pay the grid to take our power.
+
+Apr 5 breakdown (44.1 kWh solar, 22.4 kWh load):
+
+| Hours | Solar kWh | Avg price | Solar value |
+| --- | --- | --- | --- |
+| Positive price hours | ~22 kWh | ~3c avg | +58.7c earned |
+| Negative price hours (12-16) | ~22 kWh | -1.5c avg | -41.3c lost |
+| **Net solar value** | **44 kWh** | | **+17.4c ($0.17)** |
+
+The 21.8 kWh generated during hours 12-16 at -1.5 to -2.1c cost $0.41,
+nearly wiping out the $0.58 earned during positive hours. This is a
+pathological day, not typical -- most April days have low-positive midday
+prices (1-3c), not negative. But it demonstrates the risk.
+
+Negative prices occur when regional solar generation overwhelms grid demand.
+As more residential and utility-scale solar is installed, this midday surplus
+grows (the "duck curve"). ComEd hourly pricing passes the wholesale signal
+through directly, so every solar installation in the region competes for
+the same midday hours.
+
+The battery cannot fix this: there is no profitable destination for 20+ kWh
+of excess solar when the surplus hours are all negative-priced. The battery
+was already full and idle during those hours. This problem will likely worsen
+as solar penetration increases.
+
+### Seasonal context
+
+- **April/May (shoulder):** best months for net solar value. Low A/C load,
+  good solar production, occasional surplus. Negative price days are rare
+  but impactful.
+- **Summer:** high solar but high A/C load absorbs most production. Less
+  export, more self-consumption. Battery has more arbitrage opportunity
+  from afternoon price spikes.
+- **Winter:** low solar, low electric load (gas heat, ~1 kW fan only).
+  Battery value depends entirely on price volatility, not solar.
 
 ## Summary
 

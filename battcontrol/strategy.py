@@ -180,17 +180,25 @@ def evaluate(
 	if state == StrategyState.BELOW_CUTOFF:
 		band_high = config["headroom_band_high"]
 		band_low = config["headroom_band_low"]
-		# negative price headroom: near-full battery with negative price
-		# discharge a bit to absorb solar instead of exporting at a loss
-		if battery_soc >= band_high and comed_price_cents < 0:
+		# proactive headroom: create room for solar absorption before negative
+		# prices arrive. Only fires during the solar-prep window (default 8-14).
+		# After the solar peak, normal cutoff logic handles low/negative prices.
+		headroom_threshold = config["headroom_price_threshold_cents"]
+		headroom_start = config["headroom_start_hour"]
+		headroom_end = config["headroom_end_hour"]
+		price_is_low = comed_price_cents < headroom_threshold
+		in_headroom_window = headroom_start <= hour <= headroom_end
+		if battery_soc >= band_high and price_is_low and in_headroom_window:
 			logger.info(
-				"Negative price headroom: SoC %d%% >= %d%%, price %.1fc negative",
-				battery_soc, band_high, comed_price_cents,
+				"Proactive headroom: SoC %d%% >= %d%%, price %.1fc < %.1fc, hour %d in [%d-%d]",
+				battery_soc, band_high, comed_price_cents, headroom_threshold,
+				hour, headroom_start, headroom_end,
 			)
 			result = DecisionResult(
 				state=StrategyState.BELOW_CUTOFF,
-				reason=(f"Negative price headroom: SoC {battery_soc}% >= "
-					f"{band_high}%, price {comed_price_cents:.1f}c"),
+				reason=(f"Proactive headroom: SoC {battery_soc}% >= {band_high}%"
+					f", price {comed_price_cents:.1f}c < {headroom_threshold}c"
+					f", hour {hour}"),
 				soc_floor=band_low,
 			)
 			logger.info("Decision: %s", result)
