@@ -255,7 +255,7 @@ class HourlyLogger:
 		load_kwh = self._compute_kwh("load")
 
 		# Battery charge/discharge from SoC delta
-		battery_capacity = config.get("battery_capacity_kwh", 20.0)
+		battery_capacity = config["battery_capacity_kwh"]
 		soc_delta = self.latest_soc - self.start_soc
 		battery_charge_kwh = 0.0
 		battery_discharge_kwh = 0.0

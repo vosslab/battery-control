@@ -205,6 +205,59 @@ Example: summer price 9c is midway between 8c and 10c, so floor = 40%.
 
 The command buffer prevents flapping by requiring the desired EP Cube state to be stable before sending hardware commands. Minimum SoC change threshold and optional periodic resend are configurable. See the command buffer module for details.
 
+## Experimental: cutoff scale factor
+
+The `cutoff_scale` config key (default 1.0) multiplies the comedlib cutoff
+before the strategy decision. A value below 1.0 lowers the price threshold
+for discharge, causing the battery to be used more aggressively at moderate
+prices -- particularly overnight. This creates headroom for solar charging
+the next day.
+
+### Replay results (Apr 1-6 shoulder, 6 days)
+
+| Scale | Total savings | vs current |
+| --- | --- | --- |
+| 1.0 (current) | 69.0c | (ref) |
+| 0.75 | 80.9c | +11.8c |
+| 0.60 | 75.1c | +6.1c |
+| 0.50 | 69.2c | +0.2c |
+
+The 0.5 result exposes the failure mode clearly: too-aggressive overnight
+discharge drains the battery before price spikes arrive (Apr 4: -19.6c).
+The 0.75 result is promising but not yet trustworthy.
+
+### Cautions
+
+- **Small sample**: 11.8c over 6 days is better than other strategies tested,
+  but not enough to justify a live change by itself.
+- **Structural risk**: scaling the whole cutoff is a bigger policy change than
+  tuning reserve floors. It changes the decision boundary everywhere, all day,
+  across all prices. A win over one week could be a narrow fit to that week.
+- **Layer interaction**: the cutoff already has time-of-day heuristics (comedlib)
+  and SoC-based adjustment. Scaling the entire cutoff may undo some of that
+  intended structure rather than improving the core strategy.
+- **Winter/cloudy risk**: the 0.5 result showed what happens on low-solar days.
+  A lower cutoff spends battery too early when solar cannot refill it.
+- **Implementation**: `cutoff_scale` is applied once in the replay to the final
+  adjusted cutoff, before the strategy decision. It is not double-applied.
+
+### Next steps
+
+- Test 0.80 and 0.85 to narrow the sweet spot
+- Test on a larger data window, split by day type (high solar, low solar,
+  negative price, high peak price)
+- The most likely outcome is a sweet spot between 0.75 and 0.85
+- Do not switch live until confirmed across more data and day types
+
+### Export constraint (Apr 5 analysis)
+
+When solar >> load, the battery becomes irrelevant once full. The system
+exports to grid, and the controller has no lever left. On Apr 5 (44.1 kWh
+solar, 22.4 kWh load, 26.6 kWh exported), strategy differences were
+negligible because forced export volume far exceeds battery capacity.
+Strategy tuning has leverage on mixed days (moderate solar, price volatility)
+like Apr 3, not on solar-saturated days.
+
 ## Summary
 
 The controller uses two strategy states (`BELOW_CUTOFF`, `ABOVE_CUTOFF`) driven by predicted price vs cutoff. Both states use self-consumption mode; only the reserve SoC changes. Below cutoff: reserve 100%, battery is preserved, load supplied by grid when solar is insufficient. Above cutoff: reserve follows the price map adjusted by time period, battery can serve load down to that reserve. The inverter handles actual power flow based on house load and solar availability. Three seasons (summer, shoulder, winter) drive discharge floor behavior. Price-threshold effects come through three layers: the comedlib cutoff (time-of-day heuristics), the SoC-based cutoff adjustment (battery charge level), and the cutoff deadband (state persistence). Reserve-floor effects come through the time-period adjustment (evening +5%, morning -5% on the interpolated floor).

@@ -170,17 +170,18 @@ def evaluate(
 		return result
 	logger.info("Guard: SoC %d%% above hard reserve %d%%", battery_soc, hard_reserve)
 	# determine economic state with deadband
-	cutoff_buffer = config.get("cutoff_buffer_cents", 0.5)
+	cutoff_buffer = config["cutoff_buffer_cents"]
 	state = _determine_state(
 		comed_price_cents, comed_cutoff_cents, cutoff_buffer, previous_state,
 	)
 	logger.info("State: %s (price %.1fc, cutoff %.1fc)", state.value, comed_price_cents, comed_cutoff_cents)
+	hour = current_time.hour
 	# below cutoff: cheap grid, do not spend battery
 	if state == StrategyState.BELOW_CUTOFF:
-		# headroom exception: near-full battery with negative price
+		band_high = config["headroom_band_high"]
+		band_low = config["headroom_band_low"]
+		# negative price headroom: near-full battery with negative price
 		# discharge a bit to absorb solar instead of exporting at a loss
-		band_high = config.get("headroom_band_high", 95)
-		band_low = config.get("headroom_band_low", 85)
 		if battery_soc >= band_high and comed_price_cents < 0:
 			logger.info(
 				"Negative price headroom: SoC %d%% >= %d%%, price %.1fc negative",
@@ -194,6 +195,48 @@ def evaluate(
 			)
 			logger.info("Decision: %s", result)
 			return result
+		# aggressive negative price: lower reserve at any SoC when price < 0.
+		# DISABLED by default (no negative_price_floor key in config).
+		# EP Cube reserve only controls discharge, not PV charging, so
+		# this does not create headroom for solar absorption.
+		if "negative_price_floor" in config:
+			neg_floor = config["negative_price_floor"]
+			if comed_price_cents < 0 and battery_soc > neg_floor:
+				logger.info(
+					"Negative price discharge: price %.1fc, SoC %d%%, floor %d%%",
+					comed_price_cents, battery_soc, neg_floor,
+				)
+				result = DecisionResult(
+					state=StrategyState.BELOW_CUTOFF,
+					reason=(f"Negative price discharge: price {comed_price_cents:.1f}c"
+						f", SoC {battery_soc}%, reserve {neg_floor}%"),
+					soc_floor=neg_floor,
+				)
+				logger.info("Decision: %s", result)
+				return result
+		# pre-solar positioning: create headroom before solar peak.
+		# DISABLED by default (no pre_solar_soc_threshold key in config).
+		# EP Cube reserve only controls discharge, not PV charging.
+		if "pre_solar_soc_threshold" in config:
+			pre_solar_threshold = config["pre_solar_soc_threshold"]
+			pre_solar_floor = config["pre_solar_target_floor"]
+			pre_solar_start = config["pre_solar_start_hour"]
+			pre_solar_end = config["pre_solar_end_hour"]
+			if (pre_solar_start <= hour <= pre_solar_end
+					and battery_soc >= pre_solar_threshold):
+				logger.info(
+					"Pre-solar positioning: hour %d, SoC %d%% >= %d%%, floor %d%%",
+					hour, battery_soc, pre_solar_threshold, pre_solar_floor,
+				)
+				result = DecisionResult(
+					state=StrategyState.BELOW_CUTOFF,
+					reason=(f"Pre-solar positioning: hour {hour}"
+						f", SoC {battery_soc}% >= {pre_solar_threshold}%"
+						f", reserve {pre_solar_floor}%"),
+					soc_floor=pre_solar_floor,
+				)
+				logger.info("Decision: %s", result)
+				return result
 		# normal below-cutoff: reserve 100%, battery holds
 		reason = (f"Below cutoff: price {comed_price_cents:.1f}c <= "
 			f"cutoff {comed_cutoff_cents:.1f}c, reserve 100%")
@@ -210,12 +253,11 @@ def evaluate(
 		config, season, comed_price_cents
 	)
 	# time-period reserve adjustment
-	hour = current_time.hour
-	time_adjust = config.get("time_adjust_soc_pct", 5)
-	evening_start = config.get("evening_adjust_start_hour", 13)
-	evening_end = config.get("evening_adjust_end_hour", 23)
-	morning_start = config.get("morning_adjust_start_hour", 2)
-	morning_end = config.get("morning_adjust_end_hour", 10)
+	time_adjust = config["time_adjust_soc_pct"]
+	evening_start = config["evening_adjust_start_hour"]
+	evening_end = config["evening_adjust_end_hour"]
+	morning_start = config["morning_adjust_start_hour"]
+	morning_end = config["morning_adjust_end_hour"]
 	adjust = 0
 	period_label = ""
 	if evening_start <= hour <= evening_end:

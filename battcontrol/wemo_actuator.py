@@ -87,8 +87,8 @@ def execute_wemo(state: battcontrol.decision_engine.StrategyState, config: dict,
 	Returns:
 		bool: True if commands were sent successfully.
 	"""
-	charge_plug = config.get("wemo_charge_plug_name", "")
-	discharge_plug = config.get("wemo_discharge_plug_name", "")
+	charge_plug = config["wemo_charge_plug_name"]
+	discharge_plug = config["wemo_discharge_plug_name"]
 	# skip if no WeMo plugs configured
 	if not charge_plug and not discharge_plug:
 		logger.info("No WeMo plugs configured, skipping WeMo actuator")

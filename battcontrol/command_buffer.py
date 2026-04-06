@@ -36,9 +36,9 @@ def should_send_epcube_update(
 			"unchanged: same mode and reserve within buffer").
 	"""
 
-	# Get config values with defaults
-	buffer_pct = config.get("reserve_soc_buffer_pct", 2)
-	resend_interval_minutes = config.get("epcube_resend_interval_minutes", 0)
+	# Get config values
+	buffer_pct = config["reserve_soc_buffer_pct"]
+	resend_interval_minutes = config["epcube_resend_interval_minutes"]
 
 	last_mode = control_state.last_epcube_mode
 	last_reserve = control_state.last_epcube_reserve_soc

@@ -1,0 +1,4 @@
+# Half cutoff: use battery at half the normal price threshold
+# Discharges more aggressively at night, creates headroom for solar
+
+cutoff_scale: 0.5

@@ -245,6 +245,66 @@ class EpcubeClient:
 		return result.get("data", {})
 
 	#============================================
+	def get_device_info(self) -> dict:
+		"""
+		Fetch device metadata from the EP Cube API.
+
+		Returns device information such as model, firmware version,
+		installation date, and serial number.
+
+		Returns:
+			dict: Device info with lowercase keys, or None on failure.
+		"""
+		if not self._device_id:
+			logger.warning("No device ID available, cannot fetch device info")
+			return None
+		endpoint = f"/device/userDeviceInfo?devId={self._device_id}"
+		result = self._request("GET", endpoint)
+		if result is None:
+			return None
+		raw_data = result.get("data", {})
+		if not raw_data:
+			logger.warning("EP Cube returned empty device info")
+			return None
+		# normalize keys to lowercase
+		normalized = {k.lower(): v for k, v in raw_data.items()}
+		return normalized
+
+	#============================================
+	def get_energy_stats(self, date_str: str, scope_type: int) -> dict:
+		"""
+		Fetch historical energy statistics from the EP Cube cloud.
+
+		Args:
+			date_str: Date string for the query period.
+				Daily: 'YYYY-MM-DD', Monthly: 'YYYY-MM', Annual: 'YYYY'.
+			scope_type: Query scope.
+				0 = annual, 1 = daily, 2 = monthly, 3 = yearly detail.
+
+		Returns:
+			dict: Energy stats with lowercase keys, or None on failure.
+		"""
+		if not self._device_id:
+			logger.warning("No device ID available, cannot fetch energy stats")
+			return None
+		endpoint = (
+			f"/device/queryDataElectricityV2"
+			f"?devId={self._device_id}"
+			f"&queryDateStr={date_str}"
+			f"&scopeType={scope_type}"
+		)
+		result = self._request("GET", endpoint)
+		if result is None:
+			return None
+		raw_data = result.get("data", {})
+		if not raw_data:
+			logger.warning("EP Cube returned empty energy stats for %s", date_str)
+			return None
+		# normalize keys to lowercase
+		normalized = {k.lower(): v for k, v in raw_data.items()}
+		return normalized
+
+	#============================================
 	def set_mode(self, mode: int, reserve_soc: int = None) -> bool:
 		"""
 		Set the EP Cube operating mode.

@@ -1,5 +1,111 @@
 # Changelog
 
+## 2026-04-06
+
+### Additions and New Features
+
+- Added `get_device_info()` and `get_energy_stats()` methods to
+  `battcontrol/epcube_client.py` for `/device/userDeviceInfo` and
+  `/device/queryDataElectricityV2` endpoints (from epcube HA integration)
+- Added `epcube_device_info.py` standalone script to fetch and display
+  device info, live status, and daily energy stats
+- Documented `allowChargingXiaGrid` in [docs/EPCUBE_MODE_BEHAVIOR.md](docs/EPCUBE_MODE_BEHAVIOR.md):
+  TOU-mode-only grid charging toggle, forbidden by electricity provider
+- Added [docs/EPCUBE_HARDWARE_SPECS.md](docs/EPCUBE_HARDWARE_SPECS.md): EP Cube v1
+  NA720G specs from datasheet, confirmed by invoice (19.9 kWh, 6 modules,
+  93.93% CEC efficiency, 7.6 kW charge/discharge)
+- Added `CONFIG_SCHEMA` in `battcontrol/config.py`: one canonical schema for all
+  config keys with types, defaults, and range bounds. Replaces scattered `DEFAULTS`
+  dict. Schema entries use explicit dicts (`{"type": int, "default": 5, "min": 0}`)
+- Added `apply_defaults()`, `validate_config()`, and `get_defaults()` functions
+  in config.py for schema-driven config loading
+- Added `tests/test_config_validate.py` with 17 tests: unknown key rejection,
+  type checks (bool rejected for int), range violations, experimental key
+  absence/presence, nested structure validation for seasonal dicts and anchors
+- Config validation now runs at load time: unknown keys raise ValueError (typo
+  protection), wrong types raise, range violations raise
+- Added `cutoff_scale` config key (default 1.0): multiplier on comedlib cutoff
+  before strategy decision. Values below 1.0 lower the discharge threshold,
+  causing more overnight battery use and creating headroom for solar.
+  Replay testing showed 0.75 scale as most promising (+11.8c vs current over
+  6 days), but not yet confirmed for live use.
+- Added `print_usage_summary()` to `replay_strategy.py`: strategy-independent
+  daily table showing import/export kWh, solar, load, and price stats (avg,
+  peak, min). Prints first in compare mode.
+- Added `configs/half_cutoff.yml`, `configs/cutoff_75pct.yml`,
+  `configs/cutoff_60pct.yml` for cutoff scale testing
+- Updated [docs/STRATEGY.md](docs/STRATEGY.md) with experimental cutoff scale
+  section, replay results, cautions, and export constraint analysis
+
+### Fixes and Maintenance
+
+- Fixed missing group validation for pre-solar experimental config keys: if a user
+  sets `pre_solar_soc_threshold` without the other three sibling keys
+  (`pre_solar_target_floor`, `pre_solar_start_hour`, `pre_solar_end_hour`),
+  `validate_config()` now raises ValueError at load time instead of KeyError at
+  runtime in strategy.py
+
+### Behavior or Interface Changes
+
+- Replaced all `config.get("key", default)` calls with `config["key"]` across
+  7 files: strategy.py, cutoff_adjust.py, command_buffer.py,
+  battery_controller.py, hourly_logger.py, wemo_actuator.py, replay_strategy.py.
+  Stable keys are guaranteed present by `apply_defaults()`. Experimental keys
+  use `"key" in config` presence checks.
+- Removed `negative_price_enabled` and `pre_solar_enabled` boolean flags from
+  config; feature gating now uses key presence instead of sentinel values
+- Removed 9 stale keys from `config.yml` that were no longer used by strategy:
+  `afternoon_target_soc_pct`, `peak_window_start`, `peak_window_end`,
+  `extreme_price_threshold`, `night_floor_pct`, `hysteresis_count`,
+  `token_friction_count`, `solar_sunset_threshold_watts`,
+  `solar_sunset_duration_minutes`
+
+### Additions and New Features
+
+- Extended `replay_strategy.py` with a battery simulation model for strategy
+  comparison: tracks simulated SoC, models solar-first dispatch with charge/
+  discharge efficiency (0.95/0.95) and max power limits (5 kWh/hr), computes
+  replayed grid cost per hour based on strategy reserve decisions
+- Added `--compare` flag to `replay_strategy.py` for side-by-side multi-strategy
+  comparison: accepts `config:label` pairs, first entry is the reference, output
+  shows savings and delta columns per strategy with a TOTAL row
+- Created `configs/` directory with four alternative strategy configs for testing:
+  `aggressive.yml` (lower floors, less evening conservatism),
+  `moderate.yml` (slightly lower floors),
+  `evening_focus.yml` (larger time-of-day contrast),
+  `max_discharge.yml` (lowest possible floors, zero time adjustment)
+
+### Additions and New Features
+
+- Added negative-price discharge rule and pre-solar positioning rule to
+  `battcontrol/strategy.py`, both **disabled by default** (negative_price_floor=100,
+  pre_solar_soc_threshold=101). These rules lower the reserve during negative
+  prices or before solar peak to create headroom, but are ineffective under
+  current EP Cube hardware constraints because the reserve only controls
+  discharge -- excess PV always charges the battery regardless of reserve setting.
+  Retained as documented design work for future hardware changes.
+- Created `configs/` directory with strategy comparison configs:
+  `early_headroom.yml`, `pre_position.yml`, `neg_price_aggressive.yml`,
+  `neg_price_combined.yml`, plus earlier variants (`aggressive.yml`,
+  `moderate.yml`, `evening_focus.yml`, `max_discharge.yml`)
+- Added `tabulate` to `pip_requirements.txt` for replay comparison output
+
+### Decisions and Failures
+
+- Ran multi-strategy comparison over Apr 1-6 hourly data (117 hours): all
+  strategies produced nearly identical results (~120c total savings), with the
+  only measurable difference on Apr 3 (+4.6c for aggressive/moderate vs current).
+  Conclusion: 6 days of shoulder season data is insufficient to justify config
+  changes; the current strategy performs well for this price environment.
+- Negative-price strategy investigation revealed a likely hardware limitation:
+  EP Cube self-consumption reserve is a discharge floor only, not a charge cap
+  per the user manual. Data is mixed: Apr 5 10:00 shows battery charging with
+  reserve=50% (SoC 92->95, supports manual), but Apr 3 15:00 shows no charging
+  with reserve=60% (SoC stayed at 95%, ambiguous due to data anomalies).
+  Live test needed to confirm: set low reserve during sunny period with SoC
+  below 100% and observe. Rules retained in code but disabled by default until
+  confirmed.
+
 ## 2026-04-02
 
 ### Additions and New Features

@@ -1,0 +1,5 @@
+# Approach 3: aggressive negative price discharge
+# When price is negative, lower reserve to 70% at any SoC level
+# Presence of this key enables the feature
+
+negative_price_floor: 70

@@ -1,0 +1,4 @@
+# Approach 1: earlier headroom trigger
+# Lower headroom_band_high so negative-price discharge activates sooner
+
+headroom_band_high: 80

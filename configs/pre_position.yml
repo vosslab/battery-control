@@ -1,0 +1,8 @@
+# Approach 2: pre-solar positioning
+# During morning hours (9-11), lower reserve to create headroom for midday solar
+# Presence of these keys enables the feature
+
+pre_solar_soc_threshold: 85
+pre_solar_target_floor: 75
+pre_solar_start_hour: 9
+pre_solar_end_hour: 11

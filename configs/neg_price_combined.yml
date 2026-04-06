@@ -1,0 +1,10 @@
+# Approach 4: all three combined
+# Earlier headroom + pre-solar positioning + aggressive negative price
+# Presence of experimental keys enables those features
+
+headroom_band_high: 80
+negative_price_floor: 70
+pre_solar_soc_threshold: 85
+pre_solar_target_floor: 75
+pre_solar_start_hour: 9
+pre_solar_end_hour: 11

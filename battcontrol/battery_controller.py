@@ -154,7 +154,7 @@ def _has_auth_credentials(config: dict) -> bool:
 	Returns:
 		bool: True if username and password are present.
 	"""
-	has_creds = bool(config.get("epcube_username")) and bool(config.get("epcube_password"))
+	has_creds = bool(config["epcube_username"]) and bool(config["epcube_password"])
 	return has_creds
 
 
@@ -173,9 +173,9 @@ def _auto_renew_token(config: dict, control_state: battcontrol.state.ControlStat
 	Returns:
 		str: New token string, or None if renewal failed.
 	"""
-	username = config.get("epcube_username", "")
-	password = config.get("epcube_password", "")
-	region = config.get("epcube_region", "US")
+	username = config["epcube_username"]
+	password = config["epcube_password"]
+	region = config["epcube_region"]
 	logger.info("Attempting auto-renewal of EP Cube token for region %s", region)
 	# call the CAPTCHA solver and login
 	new_token = battcontrol.epcube_login.generate_token(username, password, region)
@@ -186,7 +186,7 @@ def _auto_renew_token(config: dict, control_state: battcontrol.state.ControlStat
 		)
 		return None
 	# save the new token to the token file
-	token_file = config.get("epcube_token_file", "")
+	token_file = config["epcube_token_file"]
 	if token_file:
 		token_path = battcontrol.epcube_login.write_token(new_token, token_file)
 		logger.info("New token saved to %s", token_path)
@@ -216,7 +216,7 @@ def _ensure_valid_token(
 	Returns:
 		str: A valid token string, or None if unavailable.
 	"""
-	token = config.get("epcube_token", "")
+	token = config["epcube_token"]
 	has_creds = _has_auth_credentials(config)
 	# no token at all -- try generating one
 	if not token:
@@ -282,8 +282,8 @@ def _try_renew_after_rejection(
 			"Run epcube_get_token.py manually.")
 		return None, None
 	# retry once with the new token
-	region = config.get("epcube_region", "US")
-	device_sn = config.get("epcube_device_sn", "")
+	region = config["epcube_region"]
+	device_sn = config["epcube_device_sn"]
 	client = battcontrol.epcube_client.EpcubeClient(renewed, region, device_sn)
 	try:
 		device_data = client.get_device_data()
@@ -315,8 +315,8 @@ def _fetch_epcube_data(config: dict, control_state: battcontrol.state.ControlSta
 	token = _ensure_valid_token(config, control_state)
 	if not token:
 		return None, None
-	region = config.get("epcube_region", "US")
-	device_sn = config.get("epcube_device_sn", "")
+	region = config["epcube_region"]
+	device_sn = config["epcube_device_sn"]
 	client = battcontrol.epcube_client.EpcubeClient(token, region, device_sn)
 	try:
 		device_data = client.get_device_data()
@@ -360,7 +360,7 @@ def _check_token_age(control_state: battcontrol.state.ControlState, config: dict
 		return
 	last_dt = datetime.datetime.fromisoformat(last_success)
 	age_hours = (datetime.datetime.now() - last_dt).total_seconds() / 3600.0
-	max_hours = config.get("token_warning_age_hours", 168)
+	max_hours = config["token_warning_age_hours"]
 	if age_hours > max_hours:
 		logger.warning(
 			"EP Cube token is %.0f hours old (warning threshold: %d hours). "
@@ -463,13 +463,13 @@ def main() -> None:
 	else:
 		logger.info("DRY RUN MODE: no commands will be sent")
 	# load state
-	state_path = config.get("state_file_path")
+	state_path = config["state_file_path"]
 	# default comes from config.DEFAULTS which uses tempfile.gettempdir()
 	control_state = battcontrol.state.ControlState(state_path)
 	control_state.load()
 	# reuse module-level hourly logger so it persists across daemon cycles
 	global HOURLY_LOGGER
-	csv_path = config.get("hourly_csv_path", "data/hourly_history.csv")
+	csv_path = config["hourly_csv_path"]
 	if HOURLY_LOGGER is None:
 		HOURLY_LOGGER = battcontrol.hourly_logger.HourlyLogger(csv_path)
 	hourly_logger = HOURLY_LOGGER
@@ -548,8 +548,8 @@ def main() -> None:
 		control_state.last_epcube_command_at = now.isoformat()
 		control_state.last_commanded_floor = result.soc_floor
 		# WeMo actuator (skip when no plugs configured)
-		charge_plug = config.get("wemo_charge_plug_name", "")
-		discharge_plug = config.get("wemo_discharge_plug_name", "")
+		charge_plug = config["wemo_charge_plug_name"]
+		discharge_plug = config["wemo_discharge_plug_name"]
 		if charge_plug or discharge_plug:
 			battcontrol.wemo_actuator.execute_wemo(result.state, config, dry_run)
 	else:

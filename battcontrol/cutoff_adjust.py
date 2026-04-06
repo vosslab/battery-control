@@ -32,10 +32,10 @@ def _soc_adjustment(battery_soc: int, config: dict) -> float:
 		float: Adjustment in cents. Positive = raise cutoff (conserve),
 			negative = lower cutoff (more discharge).
 	"""
-	high_threshold = config.get("cutoff_adjust_soc_high_threshold", 85)
-	low_threshold = config.get("cutoff_adjust_soc_low_threshold", 25)
-	high_cents = config.get("cutoff_adjust_soc_high_cents", 1.0)
-	low_cents = config.get("cutoff_adjust_soc_low_cents", 1.0)
+	high_threshold = config["cutoff_adjust_soc_high_threshold"]
+	low_threshold = config["cutoff_adjust_soc_low_threshold"]
+	high_cents = config["cutoff_adjust_soc_high_cents"]
+	low_cents = config["cutoff_adjust_soc_low_cents"]
 	# clamp SoC to threshold range
 	if battery_soc >= high_threshold:
 		# full negative adjustment: lower cutoff to allow more discharge
@@ -62,23 +62,23 @@ def _validate_config(config: dict) -> None:
 	Raises:
 		ValueError: If config values are invalid.
 	"""
-	high_threshold = config.get("cutoff_adjust_soc_high_threshold", 85)
-	low_threshold = config.get("cutoff_adjust_soc_low_threshold", 25)
+	high_threshold = config["cutoff_adjust_soc_high_threshold"]
+	low_threshold = config["cutoff_adjust_soc_low_threshold"]
 	if low_threshold >= high_threshold:
 		raise ValueError(
 			f"cutoff_adjust_soc_low_threshold ({low_threshold}) must be "
 			f"less than cutoff_adjust_soc_high_threshold ({high_threshold})"
 		)
-	min_cents = config.get("cutoff_adjust_min_cents", 2.0)
-	max_cents = config.get("cutoff_adjust_max_cents", 12.0)
+	min_cents = config["cutoff_adjust_min_cents"]
+	max_cents = config["cutoff_adjust_max_cents"]
 	if min_cents > max_cents:
 		raise ValueError(
 			f"cutoff_adjust_min_cents ({min_cents}) must be "
 			f"<= cutoff_adjust_max_cents ({max_cents})"
 		)
 	# cent adjustments must be non-negative
-	high_cents = config.get("cutoff_adjust_soc_high_cents", 1.0)
-	low_cents = config.get("cutoff_adjust_soc_low_cents", 1.0)
+	high_cents = config["cutoff_adjust_soc_high_cents"]
+	low_cents = config["cutoff_adjust_soc_low_cents"]
 	if high_cents < 0:
 		raise ValueError(
 			f"cutoff_adjust_soc_high_cents must be >= 0, got {high_cents}"
@@ -119,8 +119,8 @@ def adjust_cutoff(
 	# apply adjustment
 	adjusted = raw_cutoff_cents + soc_adjust
 	# clamp to bounds
-	min_cents = config.get("cutoff_adjust_min_cents", 2.0)
-	max_cents = config.get("cutoff_adjust_max_cents", 12.0)
+	min_cents = config["cutoff_adjust_min_cents"]
+	max_cents = config["cutoff_adjust_max_cents"]
 	clamped = max(min_cents, min(max_cents, adjusted))
 	# log one compact line
 	was_clamped = (clamped != adjusted)

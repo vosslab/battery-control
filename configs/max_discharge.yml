@@ -1,0 +1,15 @@
+# Maximum discharge: lowest possible floors, minimal conservatism
+# Tests the extreme end of aggressive discharge
+
+price_floor_anchors:
+  shoulder:
+    - { price_cents: 6,  soc_floor_pct: 30 }
+    - { price_cents: 8,  soc_floor_pct: 20 }
+    - { price_cents: 15, soc_floor_pct: 15 }
+    - { price_cents: 30, soc_floor_pct: 10 }
+
+hard_reserve_pct:
+  shoulder: 10
+
+time_adjust_soc_pct: 0
+headroom_band_high: 85

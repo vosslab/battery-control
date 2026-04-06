@@ -1,0 +1,13 @@
+# Aggressive strategy: lower SoC floors, less evening conservatism
+# Only overrides differ from defaults in battcontrol/config.py
+
+price_floor_anchors:
+  shoulder:
+    - { price_cents: 8,  soc_floor_pct: 40 }
+    - { price_cents: 10, soc_floor_pct: 25 }
+    - { price_cents: 20, soc_floor_pct: 15 }
+    - { price_cents: 30, soc_floor_pct: 5 }
+
+time_adjust_soc_pct: 3
+
+headroom_band_high: 90

@@ -7,3 +7,4 @@ pywemo  # WeMo smart plug control for battery charge/discharge relay
 pyyaml  # YAML configuration file parsing
 requests  # HTTP client for EP Cube and ComEd APIs
 scipy  # ComEd price trend prediction (linear regression)
+tabulate  # Pretty-print tables for strategy comparison output

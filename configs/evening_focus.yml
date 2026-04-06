@@ -1,0 +1,7 @@
+# Evening focus: larger time-of-day contrast, wider morning window
+# Only overrides differ from defaults in battcontrol/config.py
+
+time_adjust_soc_pct: 8
+evening_adjust_start_hour: 15
+morning_adjust_start_hour: 1
+morning_adjust_end_hour: 11

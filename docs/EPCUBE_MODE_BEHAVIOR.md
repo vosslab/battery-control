@@ -76,8 +76,14 @@ Per the user manual:
   SoC is below reserve; battery charging source: PV only
 - Has `allowChargingXiaGrid` toggle in the iPhone app (not available in backup mode)
 
+**`allowChargingXiaGrid`:** This is a TOU-mode-only toggle that controls whether
+the battery charges from the grid during off-peak periods. Values: `"1"` = allow
+grid charging, `"0"` = PV only. This toggle is **forbidden by the electricity
+provider** for this installation. It does not control PV charging -- PV always
+charges the battery in all modes regardless of this setting.
+
 **Not suitable for this installation** because off-peak grid charging violates
-site constraints.
+site constraints (electricity provider prohibition, not just a preference).
 
 ## Key constraint
 
