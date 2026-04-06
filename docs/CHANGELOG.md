@@ -2,6 +2,19 @@
 
 ## 2026-04-06
 
+### Fixes and Maintenance
+
+- Fixed infinite loop bugs in `battcontrol/comedlib.py`: `getMostRecentRate()`
+  and `getPredictedRate()` used `while data is None` which would hang forever
+  if `downloadComedJsonData()` returned None (network failure). Changed to
+  bounded retry (3 attempts) with None return so callers can handle gracefully.
+  Original `while` loop was an intentional retry mechanism but had no limit.
+- Fixed `getMedianComedRate()` cache check ordering: was computing prices
+  array before checking cache, wasting work on every call after the first.
+  Moved cache check to top of function, before data download.
+- Added None guards to `getCurrentComedRate()` and `getCurrentComedRateUnSafe()`
+  for consistent None-safe behavior across all public methods.
+
 ### Behavior or Interface Changes
 
 - Changed headroom from reactive (any-hour negative price trigger) to proactive
