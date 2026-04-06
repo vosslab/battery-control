@@ -1,3 +1,4 @@
+data/daily_summary.csv
 battery_controller.log
 epcube_*.json
 epcube/

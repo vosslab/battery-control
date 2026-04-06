@@ -128,6 +128,23 @@ def safe_float(value: str) -> float:
 
 
 #============================================
+def fmt_dollars(cents: float) -> str:
+	"""
+	Format cents as dollars with sign before $.
+
+	Args:
+		cents: Value in cents.
+
+	Returns:
+		str: Formatted string like '$1.234' or '-$0.456'.
+	"""
+	dollars = cents / 100.0
+	if dollars < 0:
+		return f"-${abs(dollars):.3f}"
+	return f"${dollars:.3f}"
+
+
+#============================================
 def safe_int(value: str) -> int:
 	"""
 	Convert string to int, treating empty/blank as 0.
@@ -217,7 +234,6 @@ def run_replay(
 			continue
 
 		# extract actual values
-		actual_grid_kwh = safe_float(row.get('grid_kwh', ''))
 		actual_solar_kwh = safe_float(row.get('solar_kwh', ''))
 		actual_load_kwh = safe_float(row.get('load_kwh', ''))
 		comed_price = safe_float(row.get('comed_price', ''))
@@ -301,26 +317,27 @@ def run_replay(
 		# clamp SoC to physical bounds
 		simulated_soc = max(hard_reserve, min(100.0, simulated_soc))
 
-		# cost calculations
-		replayed_cost_cents = replayed_grid_kwh * comed_price
-		actual_cost_cents = actual_grid_kwh * comed_price
-		# baseline: no battery, grid covers load minus solar
-		# negative = export to grid (costs money at negative prices)
+		# cost calculations: supply-only and total (supply + delivery)
+		delivery_rate = config["delivery_rate_cents"]
 		baseline_grid_kwh = actual_load_kwh - actual_solar_kwh
-		baseline_cost_cents = baseline_grid_kwh * comed_price
-		actual_savings_cents = baseline_cost_cents - actual_cost_cents
-		replayed_savings_cents = baseline_cost_cents - replayed_cost_cents
-		improvement_cents = replayed_savings_cents - actual_savings_cents
+		# supply-only costs (ComEd hourly price only)
+		replayed_supply_cents = replayed_grid_kwh * comed_price
+		baseline_supply_cents = baseline_grid_kwh * comed_price
+		# total costs (supply + delivery)
+		full_price = comed_price + delivery_rate
+		replayed_total_cents = replayed_grid_kwh * full_price
+		baseline_total_cents = baseline_grid_kwh * full_price
+		# savings use total cost (supply + delivery)
+		replayed_savings_cents = baseline_total_cents - replayed_total_cents
 
 		replay_results.append({
 			'hour_start': hour_start_str,
 			'date': extract_date(hour_start_str),
-			'actual_cost_cents': actual_cost_cents,
-			'baseline_cost_cents': baseline_cost_cents,
-			'actual_savings_cents': actual_savings_cents,
-			'replayed_cost_cents': replayed_cost_cents,
+			'replayed_supply_cents': replayed_supply_cents,
+			'replayed_total_cents': replayed_total_cents,
+			'baseline_supply_cents': baseline_supply_cents,
+			'baseline_total_cents': baseline_total_cents,
 			'replayed_savings_cents': replayed_savings_cents,
-			'improvement_cents': improvement_cents,
 			'actual_action': row.get('policy_action', ''),
 			'replayed_action': decision.state.value,
 		})
@@ -333,18 +350,18 @@ def run_replay(
 			daily_data[date] = {
 				'date': date,
 				'strategy_name': strategy_name,
-				'actual_cost_cents': 0.0,
-				'replay_cost_cents': 0.0,
-				'actual_savings_cents': 0.0,
+				'replay_supply_cents': 0.0,
+				'replay_total_cents': 0.0,
+				'baseline_supply_cents': 0.0,
+				'baseline_total_cents': 0.0,
 				'replay_savings_cents': 0.0,
-				'improvement_cents': 0.0,
 				'sample_hours': 0,
 			}
-		daily_data[date]['actual_cost_cents'] += result['actual_cost_cents']
-		daily_data[date]['replay_cost_cents'] += result['replayed_cost_cents']
-		daily_data[date]['actual_savings_cents'] += result['actual_savings_cents']
+		daily_data[date]['replay_supply_cents'] += result['replayed_supply_cents']
+		daily_data[date]['replay_total_cents'] += result['replayed_total_cents']
+		daily_data[date]['baseline_supply_cents'] += result['baseline_supply_cents']
+		daily_data[date]['baseline_total_cents'] += result['baseline_total_cents']
 		daily_data[date]['replay_savings_cents'] += result['replayed_savings_cents']
-		daily_data[date]['improvement_cents'] += result['improvement_cents']
 		daily_data[date]['sample_hours'] += 1
 
 	daily_summaries = [daily_data[d] for d in sorted(daily_data.keys())]
@@ -356,9 +373,10 @@ def run_replay(
 			os.makedirs(output_dir, exist_ok=True)
 
 		fieldnames = [
-			'date', 'strategy_name', 'actual_cost_cents', 'replay_cost_cents',
-			'actual_savings_cents', 'replay_savings_cents', 'improvement_cents',
-			'sample_hours',
+			'date', 'strategy_name',
+			'replay_supply_cents', 'replay_total_cents',
+			'baseline_supply_cents', 'baseline_total_cents',
+			'replay_savings_cents', 'sample_hours',
 		]
 		with open(output_path, 'w', newline='') as f:
 			writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -381,21 +399,34 @@ def print_table(daily_summaries: list) -> None:
 		print("No data to display")
 		return
 
-	# short headers for 120-char terminal
+	# convert cents to dollar strings for display
+	dollar_keys = {
+		'replay_supply_cents', 'replay_total_cents',
+		'baseline_supply_cents', 'baseline_total_cents',
+		'replay_savings_cents',
+	}
 	header_map = {
 		'date': 'date',
 		'strategy_name': 'strategy',
-		'actual_cost_cents': 'actual cost',
-		'replay_cost_cents': 'replay cost',
-		'actual_savings_cents': 'actual sav',
-		'replay_savings_cents': 'replay sav',
-		'improvement_cents': 'improve',
+		'replay_supply_cents': 'supply',
+		'replay_total_cents': 'total',
+		'baseline_supply_cents': 'base sup',
+		'baseline_total_cents': 'base tot',
+		'replay_savings_cents': 'savings',
 		'sample_hours': 'hours',
 	}
 	keys = list(daily_summaries[0].keys())
 	headers = [header_map.get(k, k.replace("_", " ")) for k in keys]
-	rows = [list(row.values()) for row in daily_summaries]
-	table = tabulate.tabulate(rows, headers=headers, tablefmt='fancy_grid')
+	rows = []
+	for d in daily_summaries:
+		row = []
+		for k in keys:
+			if k in dollar_keys:
+				row.append(fmt_dollars(d[k]))
+			else:
+				row.append(d[k])
+		rows.append(row)
+	table = tabulate.tabulate(rows, headers=headers, tablefmt='fancy_grid', maxcolwidths=12)
 	print(table)
 
 
@@ -494,7 +525,7 @@ def print_usage_summary(input_path: str) -> None:
 		})
 
 	print("=== Daily usage summary (kWh and cents) ===")
-	table = tabulate.tabulate(table_rows, headers="keys", tablefmt='fancy_grid')
+	table = tabulate.tabulate(table_rows, headers="keys", tablefmt='fancy_grid', maxcolwidths=12)
 	print(table)
 
 
@@ -557,39 +588,58 @@ def run_compare(input_path: str, compare_pairs: list) -> None:
 			day_data = strategy_by_date[label].get(date)
 			savings = day_data['replay_savings_cents'] if day_data else 0.0
 			totals[label]['savings'] += savings
+			# format as dollars
+			sav_str = fmt_dollars(savings)
 			if label == ref_label:
-				row[label] = f"{savings:.1f}"
+				row[label] = sav_str
 			else:
 				delta = savings - ref_savings
 				totals[label]['delta'] += delta
-				row[label] = f"{savings:.1f} ({delta:+.1f})"
+				row[label] = f"{sav_str} ({fmt_dollars(delta)})"
 		compare_rows.append(row)
 
 	# totals row
 	total_row = {'date': 'TOTAL'}
 	for label, _ in strategies:
 		total_sav = totals[label]['savings']
+		sav_str = fmt_dollars(total_sav)
 		if label == ref_label:
-			total_row[label] = f"{total_sav:.1f}"
+			total_row[label] = sav_str
 		else:
 			total_d = totals[label]['delta']
-			total_row[label] = f"{total_sav:.1f} ({total_d:+.1f})"
+			total_row[label] = f"{sav_str} ({fmt_dollars(total_d)})"
 	compare_rows.append(total_row)
 
-	# print cross-strategy comparison
-	print("\n=== Strategy comparison (cents, delta vs reference) ===")
-	table = tabulate.tabulate(compare_rows, headers="keys", tablefmt='fancy_grid')
-	print(table)
+	# print cross-strategy comparison, chunked to fit terminal
+	# reference column always included; ~5 strategies per table
+	max_per_table = 5
+	non_ref = [s for s in strategies if s[0] != ref_label]
+	chunks = []
+	for i in range(0, len(non_ref), max_per_table - 1):
+		chunks.append(non_ref[i:i + max_per_table - 1])
+	if not chunks:
+		chunks = [[]]
+	for chunk_idx, chunk in enumerate(chunks):
+		# build column subset: ref + this chunk
+		chunk_labels = [ref_label] + [s[0] for s in chunk]
+		chunk_rows = []
+		for full_row in compare_rows:
+			filtered = {k: v for k, v in full_row.items() if k in chunk_labels or k == 'date'}
+			chunk_rows.append(filtered)
+		part_label = f" (part {chunk_idx + 1}/{len(chunks)})" if len(chunks) > 1 else ""
+		print(f"\n=== Strategy comparison, savings in dollars{part_label} ===")
+		table = tabulate.tabulate(chunk_rows, headers="keys", tablefmt='fancy_grid', maxcolwidths=14)
+		print(table)
 
 	# summary table: total savings per strategy
 	print("\nTotal savings vs no-battery baseline (positive = more savings = better)")
 	summary_rows = []
 	for label, _ in strategies:
-		row = {'strategy': label, 'total savings': f"{totals[label]['savings']:.1f}"}
+		row = {'strategy': label, 'total savings': fmt_dollars(totals[label]['savings'])}
 		if label == ref_label:
 			row['vs reference'] = '(ref)'
 		else:
-			row['vs reference'] = f"{totals[label]['delta']:+.1f}"
+			row['vs reference'] = fmt_dollars(totals[label]['delta'])
 		summary_rows.append(row)
 	print(tabulate.tabulate(summary_rows, headers="keys", tablefmt='fancy_grid'))
 

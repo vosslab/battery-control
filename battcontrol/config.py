@@ -73,6 +73,10 @@ CONFIG_SCHEMA = {
 	"morning_adjust_end_hour": {"type": int, "default": 10, "min": 0, "max": 23},
 	# cutoff scale: multiplier on comedlib cutoff (1.0 = no change, 0.5 = half)
 	"cutoff_scale": {"type": float, "default": 1.0, "min": 0.0, "max": 5.0},
+	# variable delivery rate in cents/kWh (from ComEd bill)
+	# symmetric: import pays this, export gets this as credit
+	# see docs/COMED_PRICING_SPEC.md for derivation
+	"delivery_rate_cents": {"type": float, "default": 6.354, "min": 0.0},
 	# cutoff adjustment: SoC-based wrapper around comedlib cutoff
 	"cutoff_adjust_soc_high_threshold": {"type": int, "default": 85, "min": 0, "max": 100},
 	"cutoff_adjust_soc_low_threshold": {"type": int, "default": 25, "min": 0, "max": 100},

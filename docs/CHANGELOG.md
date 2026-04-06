@@ -12,6 +12,27 @@
 
 ### Additions and New Features
 
+- Added `delivery_rate_cents` config key (default 6.354): variable delivery
+  rate from ComEd bill, applied symmetrically to import (charge) and export
+  (credit). Derived from 8 months of bill analysis; see
+  [docs/COMED_PRICING_SPEC.md](docs/COMED_PRICING_SPEC.md)
+- Added delivery-inclusive cost model to `replay_strategy.py`: tracks both
+  supply-only (`replay_supply_cents`) and total (`replay_total_cents`)
+  costs per hour. Strategy savings now use total cost (supply + delivery),
+  which changes rankings because the 6.354c delivery credit makes export
+  profitable even at negative supply prices
+- Added [docs/COMED_PRICING_SPEC.md](docs/COMED_PRICING_SPEC.md): full
+  billing structure documentation from 8 monthly bills, covering delivery
+  symmetry, supply settlement, net metering adjustments, and three modeling
+  levels for replay accuracy
+- Added delivery-inclusive cost table to `daily_summary.py` showing actual,
+  no-battery, battery savings, no-solar, and solar savings with delivery at
+  6.354c/kWh. Fixed negative price export bug in baseline calculation.
+  Separated solar savings from battery savings (solar saves via load offset
+  and delivery credit, battery saves via price arbitrage)
+- All dollar outputs now use `$X.XXX` format instead of cents for consistency
+- Strategy comparison tables auto-chunk into multiple tables when more than
+  5 strategies to fit 120-char terminal width
 - Added `get_device_info()` and `get_energy_stats()` methods to
   `battcontrol/epcube_client.py` for `/device/userDeviceInfo` and
   `/device/queryDataElectricityV2` endpoints (from epcube HA integration)
@@ -100,11 +121,21 @@
 
 ### Decisions and Failures
 
-- Ran multi-strategy comparison over Apr 1-6 hourly data (117 hours): all
-  strategies produced nearly identical results (~120c total savings), with the
-  only measurable difference on Apr 3 (+4.6c for aggressive/moderate vs current).
-  Conclusion: 6 days of shoulder season data is insufficient to justify config
-  changes; the current strategy performs well for this price environment.
+- Adding delivery rate to replay changed strategy rankings significantly.
+  With supply-only pricing, cutoff_75pct was the clear winner (+11.8c).
+  With delivery included, aggressive/moderate/max_discharge tied at +$0.046
+  and cutoff strategies lost value because lowering the cutoff reduces
+  export volume (each exported kWh earns 6.354c delivery credit).
+  Half-cutoff went from break-even to -$0.099 (worst strategy).
+- Key finding: on Apr 5 (44.1 kWh solar), solar earned only $0.174 net
+  at supply-only rates because 21.8 kWh was generated during negative
+  price hours 12-16 (-1.5 to -2.1c), costing $0.413. With delivery
+  credit included, solar savings jumped to $2.98 for the same day.
+  Export is almost always net positive when delivery credit is included.
+- Ran multi-strategy comparison over Apr 1-6 hourly data: with delivery,
+  all strategies are within $0.15 of each other over 6 days.
+  Conclusion: 6 days of shoulder season data is insufficient to justify
+  config changes; need more data across seasons.
 - Negative-price strategy investigation revealed a likely hardware limitation:
   EP Cube self-consumption reserve is a discharge floor only, not a charge cap
   per the user manual. Data is mixed: Apr 5 10:00 shows battery charging with
