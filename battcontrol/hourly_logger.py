@@ -273,7 +273,7 @@ class HourlyLogger:
 			"season": season,
 			"comed_price": f"{self.latest_price:.1f}" if self.latest_price is not None else "",
 			"comed_price_median": f"{self.latest_median:.1f}" if self.latest_median is not None else "",
-		"comed_cutoff": f"{self.latest_cutoff:.1f}" if self.latest_cutoff is not None else "",
+			"comed_cutoff": f"{self.latest_cutoff:.1f}" if self.latest_cutoff is not None else "",
 			"start_soc": self.start_soc,
 			"end_soc": self.latest_soc,
 			"grid_kwh": f"{grid_kwh:.3f}" if grid_kwh is not None else "",
