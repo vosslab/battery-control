@@ -245,6 +245,51 @@ class EpcubeClient:
 		return result.get("data", {})
 
 	#============================================
+	def get_current_reserve(self) -> dict:
+		"""
+		Fetch the device's current mode and reserve SoC.
+
+		Wraps get_switch_mode() and normalizes the response. Used by
+		the command buffer and strategy deadband so that two daemons on
+		separate hosts converge on what the device actually reports
+		rather than each host's own memory of its last command.
+
+		Returns:
+			dict: {"mode": int, "reserve_soc": int} where mode is 1, 2,
+				or 3 and reserve_soc is the mode-specific reserve from
+				the device. Returns None if the call fails or required
+				fields are absent.
+		"""
+		raw = self.get_switch_mode()
+		if not raw:
+			return None
+		# keys may arrive in the vendor's camelCase; normalize to lowercase
+		data = {k.lower(): v for k, v in raw.items()}
+		work_status = data.get("workstatus")
+		if work_status is None:
+			logger.warning("getSwitchMode response missing workStatus: %s", list(data.keys()))
+			return None
+		# workStatus may arrive as str or int; coerce to int for mode
+		mode_int = _safe_int(work_status)
+		# reserve SoC field name is mode-specific, matching set_mode payload
+		if mode_int == 1:
+			reserve_raw = data.get("selfconsumptioinreservesoc")
+		elif mode_int == 3:
+			reserve_raw = data.get("backuppowerreservesoc")
+		else:
+			# mode 2 (TOU) is unused by this installation; no reserve to compare
+			logger.info("getSwitchMode reports mode %d; no reserve available to compare", mode_int)
+			return None
+		if reserve_raw is None:
+			logger.warning(
+				"getSwitchMode response missing reserve SoC for mode %d: %s",
+				mode_int, list(data.keys()),
+			)
+			return None
+		normalized = {"mode": mode_int, "reserve_soc": _safe_int(reserve_raw)}
+		return normalized
+
+	#============================================
 	def get_device_info(self) -> dict:
 		"""
 		Fetch device metadata from the EP Cube API.

@@ -14,13 +14,27 @@ def should_send_epcube_update(
 	control_state: battcontrol.state.ControlState,
 	config: dict,
 	now: datetime.datetime,
+	device_mode: str = None,
+	device_reserve_soc: int = None,
 ) -> tuple:
 	"""
 	Determine if EP Cube update should be sent using deadband logic.
 
+	When device_mode and device_reserve_soc are both provided (authoritative
+	state fetched from the EP Cube cloud this cycle), suppression compares
+	the desired command against what the device currently reports. This
+	lets two daemons on different hosts converge without shared local state:
+	whichever host wrote last is observable to both on the next cycle, so
+	neither host keeps overwriting the other.
+
+	When device state is None (API call failed, or single-host operation
+	without the lookup), falls back to the local-memory path using
+	control_state.last_epcube_mode / .last_epcube_reserve_soc.
+
 	Sends update when: (1) mode changed, (2) reserve SoC changed beyond
-	deadband, (3) resend interval expired, or (4) first-ever command.
-	Otherwise returns (False, reason_string).
+	deadband, (3) resend interval expired (fallback path only, since the
+	device-state path reads current reserve each cycle and does not need
+	a keepalive), or (4) first-ever command / no prior state.
 
 	Args:
 		desired_mode: Target mode string (e.g., "self_consumption", "backup").
@@ -29,17 +43,37 @@ def should_send_epcube_update(
 		config: Config dict with "reserve_soc_buffer_pct" and
 			"epcube_resend_interval_minutes" keys.
 		now: Current datetime for interval calculation.
+		device_mode: Optional authoritative mode string from the device.
+		device_reserve_soc: Optional authoritative reserve SoC from the device.
 
 	Returns:
 		tuple: (should_send: bool, buffer_reason: str) where buffer_reason
-			explains the decision (e.g., "mode changed: old -> new",
-			"unchanged: same mode and reserve within buffer").
+			explains the decision.
 	"""
 
 	# Get config values
 	buffer_pct = config["reserve_soc_buffer_pct"]
 	resend_interval_minutes = config["epcube_resend_interval_minutes"]
 
+	# device-state path: authoritative, used when both fields are available
+	if device_mode is not None and device_reserve_soc is not None:
+		if desired_mode != device_mode:
+			reason = f"mode mismatch: device {device_mode} -> desired {desired_mode}"
+			return (True, reason)
+		delta = abs(desired_reserve_soc - device_reserve_soc)
+		if delta >= buffer_pct:
+			reason = (
+				f"reserve SoC change: device {device_reserve_soc}% -> "
+				f"desired {desired_reserve_soc}% (delta {delta}%)"
+			)
+			return (True, reason)
+		reason = (
+			f"unchanged: device already at mode {device_mode} reserve "
+			f"{device_reserve_soc}% (delta {delta}% within {buffer_pct}%)"
+		)
+		return (False, reason)
+
+	# fallback path: local memory (single-host or device state unavailable)
 	last_mode = control_state.last_epcube_mode
 	last_reserve = control_state.last_epcube_reserve_soc
 	last_command_at = control_state.last_epcube_command_at
@@ -66,7 +100,7 @@ def should_send_epcube_update(
 		reason = "first command: no previous reserve state"
 		return (True, reason)
 
-	# Rule 3: optional periodic resend
+	# Rule 3: optional periodic resend (fallback path only)
 	if resend_interval_minutes > 0:
 		if last_command_at is None:
 			# No previous command timestamp, treat as expired

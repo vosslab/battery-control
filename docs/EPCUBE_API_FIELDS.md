@@ -87,6 +87,31 @@ the battery remaining idle at 61% SoC.
 - Confirm `batteryCurrentElectricity` = stored energy by observing a charge/discharge
   cycle (value should track SoC proportionally)
 
+## getSwitchMode endpoint
+
+Separate from `homeDeviceInfo`, `GET /device/getSwitchMode?devId=...`
+returns the device's **current configured mode and reserve SoC**. This
+is the authoritative source for "what reserve did I (or another
+controller) set last time?" `homeDeviceInfo` exposes `workStatus` (the
+mode), but not the reserve SoC, so `getSwitchMode` is required to let
+two independent daemons converge without shared local state.
+
+Expected fields (based on the `switchMode` write payload in
+`battcontrol/epcube_client.py:322-336`). Exact casing has not been
+confirmed against a live response yet; `get_current_reserve()` normalizes
+keys to lowercase before reading:
+
+| Raw key | Unit | Description |
+| --- | --- | --- |
+| `workStatus` | str | Current mode number ("1" = Self-consumption, "3" = Backup) |
+| `selfConsumptioinReserveSoc` | str | Reserve % when mode == 1 (note: typo is in the vendor API) |
+| `backupPowerReserveSoc` | str | Reserve % when mode == 3 |
+| `weatherWatch` | str | Mode-related flag (unused by this controller) |
+| `onlySave` | str | Write-only flag in the payload (may not appear on read) |
+
+Run `epcube_device_info.py` to see the actual live response under the
+"Switch mode" section; update this table if field names or types differ.
+
 ## Flow power fields
 
 Confirmed duplicates of primary power fields (gridTotalPower=gridPower,

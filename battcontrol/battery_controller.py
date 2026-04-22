@@ -502,6 +502,21 @@ def main() -> None:
 		battery_soc=battery_soc,
 		config=config,
 	)
+	# fetch authoritative device mode + reserve so multi-host daemons
+	# compare against the device, not each host's local memory
+	device_mode = None
+	device_reserve = None
+	if epcube_client is not None:
+		device_state = epcube_client.get_current_reserve()
+		if device_state is not None:
+			# translate numeric mode to the string form used by desired_mode
+			mode_to_name = {1: "self_consumption", 3: "backup"}
+			device_mode = mode_to_name.get(device_state["mode"])
+			device_reserve = device_state["reserve_soc"]
+			logger.info(
+				"Device reports mode=%s reserve=%s%%",
+				device_mode, device_reserve,
+			)
 	# run decision engine
 	result = battcontrol.decision_engine.decide(
 		battery_soc=battery_soc,
@@ -513,6 +528,7 @@ def main() -> None:
 		config=config,
 		control_state=control_state,
 		current_time=now,
+		device_reserve_soc=device_reserve,
 	)
 	# record cycle data for hourly CSV history
 	hourly_logger.record_cycle(
@@ -536,6 +552,8 @@ def main() -> None:
 		control_state=control_state,
 		config=config,
 		now=now,
+		device_mode=device_mode,
+		device_reserve_soc=device_reserve,
 	)
 	if should_send:
 		logger.info("Sending EP Cube update: %s", buffer_reason)

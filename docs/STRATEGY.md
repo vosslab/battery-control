@@ -205,6 +205,10 @@ Example: summer price 9c is midway between 8c and 10c, so floor = 40%.
 
 The command buffer prevents flapping by requiring the desired EP Cube state to be stable before sending hardware commands. Minimum SoC change threshold and optional periodic resend are configurable. See the command buffer module for details.
 
+When the daemon successfully fetches the device's current mode and reserve via `getSwitchMode`, the buffer compares the desired command against the **device-reported** state rather than the local memory of "what I last sent." This lets two daemons on isolated hosts converge without any shared state: whichever host wrote last is observable to both on the next cycle, so neither host keeps overwriting the other. If the `getSwitchMode` call fails, the buffer falls back to the local-memory path (single-host behavior).
+
+The strategy deadband uses the same device-reported reserve as an anchor for `previous_state`: reserve at 100% is interpreted as the last effective decision being `BELOW_CUTOFF`, anything lower as `ABOVE_CUTOFF`. This keeps both hosts' deadband decisions aligned during transitions.
+
 ## Experimental: cutoff scale factor
 
 The `cutoff_scale` config key (default 1.0) multiplies the comedlib cutoff

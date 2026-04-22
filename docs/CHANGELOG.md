@@ -1,5 +1,71 @@
 # Changelog
 
+## 2026-04-22
+
+### Additions and New Features
+
+- Added `get_current_reserve()` to `battcontrol/epcube_client.py`: a
+  defensive normalizer on top of the previously unused
+  `get_switch_mode()` that returns `{"mode": int, "reserve_soc": int}`
+  or `None`. Handles both `selfConsumptioinReserveSoc` (mode 1) and
+  `backupPowerReserveSoc` (mode 3) by dispatching on `workStatus`.
+- `epcube_device_info.py` now prints a "Switch mode" section with the
+  raw `getSwitchMode` response to help confirm the vendor field names
+  against a live device.
+- Added `tests/test_command_buffer_device_state.py` and
+  `tests/test_decision_engine_previous_state.py` covering the new
+  device-state-aware suppression and deadband mapping, including a
+  multi-host flap scenario that asserts convergence.
+- Added `run_daemon_tmux.sh` at the repo root: launches `run_daemon.py`
+  in a named tmux session `battery_control` and exits 0 if the session
+  already exists. Script forwards all args to `run_daemon.py` so the
+  same launcher works for primary (`./run_daemon_tmux.sh`) and backup
+  (`./run_daemon_tmux.sh --dry-run`) hosts. Modeled on
+  `~/nsh/junk-drawer/course_scheduling/run_email_tmux.sh` but uses
+  `source source_me.sh && python3` instead of a hard-coded interpreter
+  path.
+
+### Behavior or Interface Changes
+
+- Command-buffer suppression (`battcontrol/command_buffer.py`) now
+  compares the desired EP Cube command against the device's
+  authoritative reported mode + reserve when available. This lets two
+  daemons on separate hosts converge without shared state: each cycle
+  reads what the device actually reports (`getSwitchMode`), so a
+  write from host B is observable to host A on its next cycle and
+  prevents mutual override. When `getSwitchMode` fails or is not
+  called, the buffer falls back to the pre-existing local-memory
+  path (single-host behavior preserved).
+- Strategy deadband (`battcontrol/decision_engine.py`) now derives
+  `previous_state` from the device-reported reserve when available:
+  reserve >= 100% maps to `BELOW_CUTOFF`, anything lower to
+  `ABOVE_CUTOFF`. Two hosts therefore agree on the deadband state
+  without shared memory.
+- The command buffer's periodic keepalive (rule 3,
+  `epcube_resend_interval_minutes`) now only fires on the fallback
+  path. The device-state path reads current reserve every cycle, so
+  the keepalive is unnecessary there and would otherwise be the
+  main source of multi-host flap.
+- `docs/STRATEGY.md` "Command buffering" section updated to describe
+  the device-state comparison.
+- `docs/EPCUBE_API_FIELDS.md` documents the expected `getSwitchMode`
+  response schema; live-confirmed field names should be reconciled
+  after running `epcube_device_info.py`.
+
+### Decisions and Failures
+
+- Confirmed that running `run_daemon.py` on two isolated machines is
+  safe against the EP Cube cloud API for read calls (idempotent GETs)
+  and `switchMode` writes (both hosts run the same deterministic
+  strategy from the same external inputs, so duplicate writes are
+  usually identical). The one real risk is token auto-renewal
+  collision: `epcube_login.generate_token()` calls
+  `/open/common/login`, which invalidates the prior token for the
+  account, so two independent renewals can ping-pong. Recommended
+  setup: only the primary host has a populated `epcube_auth_file` and
+  auto-renews; the backup gets a copied token and logs + skips on 401
+  instead of minting a new token.
+
 ## 2026-04-06
 
 ### Fixes and Maintenance

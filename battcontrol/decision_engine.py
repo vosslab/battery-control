@@ -25,6 +25,7 @@ def decide(
 	config: dict,
 	control_state: object,
 	current_time: datetime.datetime = None,
+	device_reserve_soc: int = None,
 ) -> DecisionResult:
 	"""
 	Main decision function - delegates to strategy.evaluate().
@@ -43,6 +44,11 @@ def decide(
 		config: Configuration dictionary.
 		control_state: ControlState instance (kept for interface compatibility).
 		current_time: Current datetime (defaults to now).
+		device_reserve_soc: Optional authoritative reserve SoC from the
+			EP Cube. When provided, previous_state for the deadband is
+			derived from the device (100 -> BELOW_CUTOFF, else
+			ABOVE_CUTOFF) so that two hosts converge without shared
+			state. When None, falls back to control_state.last_strategy_state.
 
 	Returns:
 		DecisionResult: The battery control decision.
@@ -51,13 +57,22 @@ def decide(
 		current_time = datetime.datetime.now()
 	# recover previous strategy state for deadband
 	previous_state = None
-	last_state_str = getattr(control_state, "last_strategy_state", "")
-	if last_state_str:
-		# convert stored string back to enum
-		for member in battcontrol.strategy.StrategyState:
-			if member.value == last_state_str:
-				previous_state = member
-				break
+	if device_reserve_soc is not None:
+		# infer state from the device's current reserve: the authoritative
+		# source that both hosts see, so their deadband decisions converge
+		if device_reserve_soc >= 100:
+			previous_state = battcontrol.strategy.StrategyState.BELOW_CUTOFF
+		else:
+			previous_state = battcontrol.strategy.StrategyState.ABOVE_CUTOFF
+	else:
+		# fallback: local per-host memory of last decided state
+		last_state_str = getattr(control_state, "last_strategy_state", "")
+		if last_state_str:
+			# convert stored string back to enum
+			for member in battcontrol.strategy.StrategyState:
+				if member.value == last_state_str:
+					previous_state = member
+					break
 	# delegate to pure strategy function
 	result = battcontrol.strategy.evaluate(
 		battery_soc=battery_soc,

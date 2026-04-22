@@ -47,6 +47,13 @@ def main() -> None:
 		print(json.dumps(device_info, indent=2, default=str))
 	else:
 		print("  (not available)")
+	# fetch current switch mode (authoritative device state for reserve SoC)
+	print("\n=== Switch mode (raw getSwitchMode response) ===")
+	switch_mode = client.get_switch_mode()
+	if switch_mode:
+		print(json.dumps(switch_mode, indent=2, default=str))
+	else:
+		print("  (not available)")
 	# fetch today's energy stats
 	today_str = datetime.date.today().strftime("%Y-%m-%d")
 	print(f"\n=== Energy stats for {today_str} ===")
