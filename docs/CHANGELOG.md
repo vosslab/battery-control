@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-04-23
+
+### Behavior or Interface Changes
+
+- `run_daemon.py` now injects `--execute` into the controller args when
+  no intent flag is given. The single-shot `battery_controller.py` still
+  defaults to dry-run (safety rail for manual invocation), but a
+  long-running daemon silently running in dry-run is almost never what
+  anyone wants. Pass `--dry-run` / `-n` explicitly on the backup host
+  to opt out. `run_daemon_tmux.sh` becomes a simple forwarder again.
+
+### Decisions and Failures
+
+- Audited other entry points (`run_battery_controller.py`,
+  `daily_summary.py`, `replay_strategy.py`, `epcube_device_info.py`,
+  `epcube_setup.py`, `epcube_get_token.py`) for similar silent-dry-run
+  traps. None of them perform device writes, so no change needed; the
+  daemon was the only affected wrapper.
+
 ## 2026-04-22
 
 ### Additions and New Features

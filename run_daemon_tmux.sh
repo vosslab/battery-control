@@ -6,9 +6,12 @@
 # simple per-host mutex for the daemon.
 #
 # Usage:
-#   ./run_daemon_tmux.sh                # primary host, live commands
-#   ./run_daemon_tmux.sh --dry-run      # backup host, no device writes
+#   ./run_daemon_tmux.sh                # primary host, live commands (default)
+#   ./run_daemon_tmux.sh --dry-run      # override: no device writes
 #   ./run_daemon_tmux.sh -d 3           # any extra run_daemon.py flags pass through
+#
+# run_daemon.py itself injects --execute when no intent flag is given,
+# so this wrapper just forwards args.
 #
 # Attach with:
 #   tmux attach -t battery_control
@@ -33,8 +36,8 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
 fi
 
 echo "Starting tmux session '$SESSION_NAME'..."
-# Forward all script args to run_daemon.py via "$@" so callers can pass
-# --dry-run, -d N, or any daemon flag without editing this script.
+# Forward all script args to run_daemon.py via "$@". run_daemon.py
+# defaults to --execute when no intent flag is given.
 tmux new-session -d -s "$SESSION_NAME" \
 	"cd $REPO_ROOT && source source_me.sh && python3 run_daemon.py $@"
 

@@ -22,6 +22,15 @@ def parse_daemon_args() -> tuple:
 	)
 	daemon_args, remaining = parser.parse_known_args()
 	delay_minutes = daemon_args.delay_minutes
+	# The controller defaults to dry-run, which is almost never what a
+	# long-running daemon wants. If the caller did not pick a side
+	# explicitly, inject --execute so the daemon runs live. Pass
+	# --dry-run (or -n) to override for the backup host.
+	dry_flags = {'-n', '--dry-run'}
+	execute_flags = {'-x', '--execute'}
+	has_intent = any(arg in dry_flags or arg in execute_flags for arg in remaining)
+	if not has_intent:
+		remaining.append('--execute')
 	return delay_minutes, remaining
 
 #============================================
