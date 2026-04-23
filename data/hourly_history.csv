@@ -505,3 +505,16 @@ hour_start,season,comed_price,comed_price_median,comed_cutoff,start_soc,end_soc,
 2026-04-22 12:00,shoulder,3.1,3.6,6.5,95,95,3.100,5.070,1.200,0.000,0.000,below_cutoff,self_consumption,100,12,False
 2026-04-22 13:00,shoulder,4.8,3.7,6.3,96,100,3.590,5.160,1.390,0.800,0.000,below_cutoff,self_consumption,100,12,False
 2026-04-22 14:00,shoulder,14.2,3.9,6.0,100,100,4.140,5.010,0.850,0.000,0.000,above_cutoff,self_consumption,38,12,False
+2026-04-22 15:00,shoulder,3.7,4.0,5.7,100,100,0.850,4.370,5.140,0.000,0.000,STARTUP,self_consumption,100,0,False
+2026-04-22 15:00,shoulder,4.1,4.0,5.7,100,100,0.170,0.700,0.860,0.000,0.000,below_cutoff,self_consumption,100,3,False
+2026-04-22 16:00,shoulder,12.7,4.2,5.6,100,100,7.850,3.080,1.820,0.000,0.000,above_cutoff,self_consumption,39,11,False
+2026-04-22 17:00,shoulder,27.3,4.2,5.5,100,100,0.610,2.350,1.890,0.000,0.000,above_cutoff,self_consumption,23,12,False
+2026-04-22 18:00,shoulder,19.3,4.2,5.5,100,100,0.310,0.810,0.970,0.000,0.000,above_cutoff,self_consumption,31,12,False
+2026-04-22 19:00,shoulder,17.5,4.2,5.5,100,96,0.330,0.040,1.010,0.000,0.800,above_cutoff,self_consumption,33,12,False
+2026-04-22 20:00,shoulder,6.7,4.2,5.5,96,91,0.030,0.000,1.100,0.000,1.000,above_cutoff,self_consumption,60,12,False
+2026-04-22 21:00,shoulder,4.0,4.2,5.6,90,82,0.030,0.000,1.830,0.000,1.600,below_cutoff,self_consumption,100,12,False
+2026-04-22 22:00,shoulder,3.1,4.3,5.9,81,74,0.020,0.000,1.540,0.000,1.400,below_cutoff,self_consumption,100,12,False
+2026-04-22 23:00,shoulder,21.7,4.3,7.0,73,66,0.010,0.000,1.550,0.000,1.400,above_cutoff,self_consumption,28,12,False
+2026-04-23 00:00,shoulder,14.0,4.6,7.3,66,63,0.020,0.000,0.640,0.000,0.600,above_cutoff,self_consumption,33,12,False
+2026-04-23 01:00,shoulder,2.6,4.6,7.6,62,55,0.000,0.000,1.540,0.000,1.400,below_cutoff,self_consumption,100,12,False
+2026-04-23 02:00,shoulder,3.3,4.6,7.8,55,47,0.000,0.000,1.620,0.000,1.600,below_cutoff,self_consumption,100,12,False
