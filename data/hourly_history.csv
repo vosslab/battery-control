@@ -518,3 +518,4 @@ hour_start,season,comed_price,comed_price_median,comed_cutoff,start_soc,end_soc,
 2026-04-23 00:00,shoulder,14.0,4.6,7.3,66,63,0.020,0.000,0.640,0.000,0.600,above_cutoff,self_consumption,33,12,False
 2026-04-23 01:00,shoulder,2.6,4.6,7.6,62,55,0.000,0.000,1.540,0.000,1.400,below_cutoff,self_consumption,100,12,False
 2026-04-23 02:00,shoulder,3.3,4.6,7.8,55,47,0.000,0.000,1.620,0.000,1.600,below_cutoff,self_consumption,100,12,False
+2026-04-23 03:00,shoulder,4.2,4.6,7.9,45,45,0.000,0.000,1.990,0.000,0.000,STARTUP,self_consumption,100,0,False
