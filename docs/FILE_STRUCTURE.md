@@ -10,8 +10,9 @@ battery-control/
 +- devel/                developer utility scripts
 +- OTHER_REPOS/          reference third-party code
 +- output/               generated output (git-ignored)
-+- run_battery_controller.py   single-run CLI entry point
-+- run_daemon.py               repeating loop runner
++- run_daemon_tmux.sh          primary entry point: launch daemon in tmux
++- send_battery_command.py     single-run CLI entry point (manual testing)
++- daemon_loop.py              cycle loop invoked by run_daemon_tmux.sh
 +- epcube_get_token.py         EP Cube token generator
 +- epcube_setup.py             interactive EP Cube setup wizard
 +- replay_strategy.py          replay strategy against historical CSV

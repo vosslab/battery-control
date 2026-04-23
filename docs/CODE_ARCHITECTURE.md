@@ -116,10 +116,15 @@ hold action, and no solar/load policy branching.
 
 ## Entry points
 
-- [run_battery_controller.py](run_battery_controller.py): single-run CLI entry
-  point. Delegates to `battcontrol.battery_controller.main()`.
-- [run_daemon.py](run_daemon.py): repeating loop runner for testing. Calls the
-  controller in a loop with configurable delay.
+- [run_daemon_tmux.sh](run_daemon_tmux.sh): primary entry point. Launches the
+  daemon loop in a named tmux session (`battery_control`). No-op if the session
+  already exists, so safe to re-run from login hooks or cron.
+- [send_battery_command.py](send_battery_command.py): single-run CLI entry
+  point for manual testing -- sends one command cycle to the device. Delegates
+  to `battcontrol.battery_controller.main()`.
+- [daemon_loop.py](daemon_loop.py): cycle loop invoked by `run_daemon_tmux.sh`.
+  Injects `--execute` when no intent flag is given so the daemon defaults to
+  live. Not normally run by hand -- use the tmux wrapper.
 - [epcube_get_token.py](epcube_get_token.py): standalone token generator with
   CAPTCHA solver for EP Cube API authentication.
 - [epcube_setup.py](epcube_setup.py): interactive setup wizard for EP Cube

@@ -21,10 +21,10 @@ cp config_example.yml config.yml
 # edit config.yml (credentials and device SN are in the auth file)
 
 # dry-run (no commands sent, -c defaults to config.yml)
-source source_me.sh && python3 run_battery_controller.py -n -v
+source source_me.sh && python3 send_battery_command.py -n -v
 
 # execute mode (sends real commands)
-source source_me.sh && python3 run_battery_controller.py -x -v
+source source_me.sh && python3 send_battery_command.py -x -v
 ```
 
 See [config_example.yml](config_example.yml) for all tunable parameters with comments.

@@ -8,9 +8,9 @@
 # Usage:
 #   ./run_daemon_tmux.sh                # primary host, live commands (default)
 #   ./run_daemon_tmux.sh --dry-run      # override: no device writes
-#   ./run_daemon_tmux.sh -d 3           # any extra run_daemon.py flags pass through
+#   ./run_daemon_tmux.sh -d 3           # any extra daemon_loop.py flags pass through
 #
-# run_daemon.py itself injects --execute when no intent flag is given,
+# daemon_loop.py itself injects --execute when no intent flag is given,
 # so this wrapper just forwards args.
 #
 # Attach with:
@@ -36,10 +36,10 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
 fi
 
 echo "Starting tmux session '$SESSION_NAME'..."
-# Forward all script args to run_daemon.py via "$@". run_daemon.py
+# Forward all script args to daemon_loop.py via "$@". daemon_loop.py
 # defaults to --execute when no intent flag is given.
 tmux new-session -d -s "$SESSION_NAME" \
-	"cd $REPO_ROOT && source source_me.sh && python3 run_daemon.py $@"
+	"cd $REPO_ROOT && source source_me.sh && python3 daemon_loop.py $@"
 
 echo "Session '$SESSION_NAME' started."
 echo "  attach: tmux attach -t $SESSION_NAME"

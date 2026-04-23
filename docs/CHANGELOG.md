@@ -4,12 +4,34 @@
 
 ### Behavior or Interface Changes
 
-- `run_daemon.py` now injects `--execute` into the controller args when
-  no intent flag is given. The single-shot `battery_controller.py` still
-  defaults to dry-run (safety rail for manual invocation), but a
-  long-running daemon silently running in dry-run is almost never what
-  anyone wants. Pass `--dry-run` / `-n` explicitly on the backup host
-  to opt out. `run_daemon_tmux.sh` becomes a simple forwarder again.
+- `run_daemon.py` (now `daemon_loop.py`) injects `--execute` into the
+  controller args when no intent flag is given. The single-shot
+  `battery_controller.py` still defaults to dry-run (safety rail for
+  manual invocation), but a long-running daemon silently running in
+  dry-run is almost never what anyone wants. Pass `--dry-run` / `-n`
+  explicitly on the backup host to opt out.
+- Flipped the mode-announcement log level in
+  `battcontrol/battery_controller.py`: live (execute) mode is now silent,
+  and dry-run emits the WARNING. Live is the normal operating state for
+  this program; a daemon printing "EXECUTE MODE: commands will be sent
+  to devices" on every cycle was noise, and the old behavior made a
+  stuck-in-dry-run daemon invisible.
+
+### Fixes and Maintenance
+
+- Renamed entry-point scripts to cut down on the `run_*` clutter at the
+  repo root. `run_daemon.py` -> `daemon_loop.py` (internal cycle loop
+  invoked by the tmux wrapper). `run_battery_controller.py` ->
+  `send_battery_command.py` (manual one-shot that sends a single
+  command cycle to the device). Only `run_daemon_tmux.sh` keeps the
+  `run_` prefix, since it is the actual entry point humans run. Both
+  renames used `git mv`. Updated all call sites: `run_daemon_tmux.sh`,
+  `battcontrol/battery_controller.py` comment, `README.md`,
+  `docs/USAGE.md`, `docs/CODE_ARCHITECTURE.md`, `docs/FILE_STRUCTURE.md`,
+  `docs/EPCUBE_API_FIELDS.md`. `git grep` confirms no stale references
+  outside this changelog. No underscore prefix on `daemon_loop.py`
+  because that convention is reserved for temporary files per the
+  Claude hook guide.
 
 ### Decisions and Failures
 
@@ -18,6 +40,9 @@
   `epcube_setup.py`, `epcube_get_token.py`) for similar silent-dry-run
   traps. None of them perform device writes, so no change needed; the
   daemon was the only affected wrapper.
+- Verified `data/hourly_history.csv` contains zero CR characters (clean
+  LF throughout 475 lines). The `^M` symbol observed at end-of-file was
+  a viewer artifact, not a data defect.
 
 ## 2026-04-22
 

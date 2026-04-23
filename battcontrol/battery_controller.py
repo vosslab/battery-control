@@ -26,7 +26,7 @@ import battcontrol.epcube_login
 logger = logging.getLogger(__name__)
 
 # module-level hourly logger, persists across main() calls so hour
-# boundaries are detected when run_daemon.py invokes main() repeatedly
+# boundaries are detected when daemon_loop.py invokes main() repeatedly
 HOURLY_LOGGER = None
 
 
@@ -458,10 +458,10 @@ def main() -> None:
 	config = battcontrol.config.load_config(args.config_file)
 	# override dry_run from CLI
 	dry_run = args.dry_run
-	if not dry_run:
-		logger.warning("EXECUTE MODE: commands will be sent to devices")
-	else:
-		logger.info("DRY RUN MODE: no commands will be sent")
+	# Live is the normal operating mode; dry-run is the unusual one that
+	# deserves the warning so it cannot be missed during a real incident.
+	if dry_run:
+		logger.warning("DRY RUN MODE: no commands will be sent to devices")
 	# load state
 	state_path = config["state_file_path"]
 	# default comes from config.DEFAULTS which uses tempfile.gettempdir()

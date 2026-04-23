@@ -16,8 +16,8 @@ This writes two files with alphabetically sorted keys:
 - `epcube_raw_YYYYMMDD_HHMMSS.json` -- raw API payload (56 fields, sensitive fields masked)
 - `epcube_normalized_YYYYMMDD_HHMMSS.json` -- normalized state (15 fields: power * 10, electricity in kWh)
 
-The `run_daemon.py` wrapper strips `--dump-raw` after the first cycle so it only
-fires once.
+The `daemon_loop.py` wrapper strips `--dump-raw` after the first cycle so it
+only fires once.
 
 ## Power fields (instantaneous)
 
