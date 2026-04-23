@@ -17,8 +17,8 @@ def parse_daemon_args() -> tuple:
 	"""
 	parser = argparse.ArgumentParser(add_help=False)
 	parser.add_argument(
-		'-d', '--delay', dest='delay_minutes', type=int, default=5,
-		help="Delay between runs in minutes (default: 5)",
+		'-d', '--delay', dest='delay_minutes', type=int, default=2,
+		help="Delay between runs in minutes (default: 2)",
 	)
 	daemon_args, remaining = parser.parse_known_args()
 	delay_minutes = daemon_args.delay_minutes
