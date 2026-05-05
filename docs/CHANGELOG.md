@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-05-05
+
+### Fixes and Maintenance
+
+- Fixed recurring CR (`^M`) line-ending pollution in
+  `data/hourly_history.csv`. `battcontrol/hourly_logger.py:_write_csv_row`
+  opens the file with `newline=''` (the documented `csv` idiom) but was
+  using `csv.DictWriter` with its default `lineterminator='\r\n'`, which
+  with `newline=''` writes CRLF verbatim. Every daemon cycle re-introduced
+  a `\r` on the freshly appended row, so `tests/test_whitespace.py` would
+  flag the file repeatedly even after `tests/fix_whitespace.py` cleaned it.
+  Now passes `lineterminator='\n'` to `csv.DictWriter` and normalized the
+  existing file once. Verified via a tmp-file end-to-end check that the
+  writer now emits LF only.
+
 ## 2026-04-23
 
 ### Behavior or Interface Changes

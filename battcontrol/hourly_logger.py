@@ -365,7 +365,9 @@ class HourlyLogger:
 		file_exists = os.path.exists(self.csv_path)
 
 		with open(self.csv_path, 'a', newline='') as f:
-			writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+			# csv default lineterminator is '\r\n'; with newline='' that writes
+			# CRLF verbatim and re-pollutes the file every cycle.
+			writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, lineterminator='\n')
 			if not file_exists:
 				writer.writeheader()
 			writer.writerow(row_dict)
