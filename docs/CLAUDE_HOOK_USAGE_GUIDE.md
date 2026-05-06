@@ -6,6 +6,9 @@ preferred alternatives for denied patterns.
 
 This doc is Claude-specific and does not apply to Codex.
 
+This guide documents current Claude hook behavior. Repo style conventions live in
+[docs/REPO_STYLE.md](REPO_STYLE.md) and [docs/PYTHON_STYLE.md](PYTHON_STYLE.md).
+
 ## Trust model
 
 The hook optimizes for high task completion with bounded blast radius: allow routine
@@ -104,8 +107,8 @@ These commands are allowed as single commands. Command substitution is blocked.
 
 **File and text processing:**
 `awk`, `cat`, `colordiff`, `comm`, `cut`, `diff`, `expand`, `file`, `fmt`, `fold`,
-`grep`, `head`, `jq`, `mediainfo`, `nl`, `od`, `paste`, `rg`, `sed`, `seq`, `shuf`,
-`sort`, `tac`, `tail`, `tee`, `tr`, `unexpand`, `uniq`, `wc`, `xargs`
+`grep`, `head`, `jq`, `mediainfo`, `nl`, `od`, `paste`, `pdftotext`, `rg`, `sed`,
+`seq`, `shuf`, `sort`, `tac`, `tail`, `tee`, `tr`, `unexpand`, `uniq`, `wc`, `xargs`
 
 **Filesystem navigation:**
 `basename`, `cd`, `chmod`, `cp`, `dirname`, `du`, `df`, `ls`, `lsof`, `mkdir`,
@@ -137,16 +140,23 @@ node --version
 
 **npx (whitelisted packages):**
 `npx` is allowed for a whitelist of known-safe local dev tool packages: `tsc`,
-`eslint`, `prettier`, `playwright`. Unknown packages still require user approval
-(passthrough).
+`eslint`, `prettier`, `playwright`, `esbuild`. Unknown packages still require
+user approval (passthrough).
 
 ```bash
 npx tsc --noEmit              # allowed
 npx eslint src/               # allowed
 npx prettier --check .        # allowed
 npx playwright screenshot ... # allowed
+npx esbuild src/x.ts          # allowed
 npx some-package              # requires approval
 ```
+
+If `npx tsc` fails because TypeScript is not installed, stop and tell the user
+to run `npm install --save-dev typescript` (or `npm install -g typescript` for
+a global install). Do not work around the failure by calling
+`./node_modules/.bin/tsc` or `node_modules/typescript/bin/tsc` directly --
+those paths are denied (see "Denied commands" below).
 
 **eslint and prettier (direct):**
 `eslint` and `prettier` are allowed as direct commands for linting and formatting.
@@ -167,6 +177,58 @@ deno fmt --check
 deno lint
 deno test
 deno --version
+```
+
+### Podman (containers)
+
+Read-only inspection, build, compose, lifecycle, and exec are allowed:
+
+```bash
+podman ps
+podman pod ls
+podman images
+podman logs web
+podman inspect web
+podman info
+podman build -t foo .
+podman compose up -d
+podman compose down
+podman start web
+podman stop web
+podman restart web
+podman exec web ls /var/www
+podman exec web cat /etc/hostname
+```
+
+Destructive operations are denied: `podman rm -f`, `podman rmi -f`,
+`podman kill`, `podman stop -t 0`, `podman system prune`,
+`podman volume rm|prune`, `podman network rm|prune`, `podman image rm|prune`.
+Ask the user to run these manually if truly needed.
+
+Note: arguments to `podman exec` are not re-decomposed by the hook, so a
+destructive shell inside a container (`podman exec web rm -rf /tmp/x`) is not
+blocked. Destructive behavior inside a container is a container-level concern.
+
+### Tools scoped to /tmp scratch dirs
+
+These tools may write output files anywhere by default, but are auto-allowed
+when every path argument lives under `/tmp/` or `/private/tmp/`:
+
+`ffmpeg`, `sox`, `convert`, `magick`, `mogrify`, `gm`, `optipng`, `pngcrush`,
+`jpegoptim`, `cwebp`, `tesseract`, `qpdf`, `pdftk`, `gs`, `lame`, `flac`
+
+The rule requires at least one literal `/tmp/` (or `/private/tmp/`) token in
+the leaf and blocks invocations that touch any non-scratch absolute root
+(`/Users`, `/etc`, `/usr`, `/opt`, `/var`, `/Library`, `/System`, etc.).
+Virtual sources (`-f lavfi -i sine=...`, stdin `-`, sox null sink `-n`)
+ride along as long as a real `/tmp/` path is also in the leaf.
+
+```bash
+ffmpeg -i /tmp/in.wav /tmp/out.m4a              # allowed
+sox /tmp/clip.wav -n trim 0 20 stat             # allowed
+convert /tmp/in.png /tmp/out.jpg                # allowed
+ffmpeg -i /tmp/in.wav /Users/me/out.wav         # passthrough (out of tmp)
+convert in.png out.png                          # passthrough (no tmp path)
 ```
 
 ### File deletion (safe patterns)
@@ -243,14 +305,22 @@ are also allowed.
 **Instead:** Use underscore-prefixed filenames for scratch files (`_temp.py`),
 write to `/tmp/`, or use `git rm` for tracked files.
 
-### `git commit`, `git stash`, `git clean`
+### `git commit`, `git stash`, `git clean` (branch-aware)
 
-**Blocked:** All variations including flag insertion (`git -C /tmp commit`).
+**Blocked on protected branches:** `git commit`, `git commit --amend` (all variations
+including flag insertion like `git -C /tmp commit`). `git stash` and `git clean` are
+denied everywhere.
 
-**Why:** Humans make commits. `git clean` is destructive and removes untracked files.
+**Why:** On protected branches (typically `main`, `master`), commits are made by the
+human after reviewing the staged merge via `git diff`. On agent branches, you have
+full commit access. `git stash` and `git clean` are destructive and remove tracked
+or untracked work.
 
-**Instead:** Stage changes with `git add` and update `docs/CHANGELOG.md`. The user
-commits manually.
+**Instead:** Work on an `agent/<task>` branch where commits are allowed. To prepare
+a merge into a protected branch, use `git merge --no-commit --no-ff agent/<task>`
+and let the human review and commit. See
+[Worktrees and protected branches](#worktrees-and-protected-branches) for the full
+workflow.
 
 ### `cat`/`head`/`tail` with file paths
 
@@ -279,14 +349,95 @@ is still allowed.
 
 **Instead:** Use `Glob(pattern='**/*.py', path='/search/dir')`.
 
-### `sed -n`
+### `sed -n` with file paths
 
 **Blocked:** `sed -n '10,20p' file.txt`
 
-**Why:** The Read tool with offset and limit does this better.
+**Allowed (pipe usage):** `git diff HEAD -- file.py | sed -n '250,400p'`
+-- paginating subprocess stdout is fine; Read can't substitute for it.
 
-**Instead:** Use `Read(file_path='file.txt', offset=10, limit=11)`.
+**Why:** The Read tool with offset and limit does file reads better, but sed
+is the right tool for slicing piped stdout.
+
+**Instead (file case):** Use `Read(file_path='file.txt', offset=10, limit=11)`.
 Other sed operations (substitution, etc.) are allowed.
+
+### Claude Code tool names typed as Bash commands
+
+**Blocked:** `Grep -n "^## " docs/CHANGELOG.md`, `Read README.md`,
+`Glob "**/*.py"`, `Edit file.py`, `Write /tmp/x.py`. Also caught when
+chained or piped, since the decomposer splits leaves before matching:
+`echo hi && Read README.md`, `cat /tmp/x | Grep foo`.
+
+A grep pattern that *contains* a tool name is not affected:
+`grep "Grep\|Read" file` is allowed (the deny anchors at start-of-leaf,
+so only the lowercase `grep` token matters).
+
+**Why:** `Grep`, `Read`, `Glob`, `Edit`, `Write`, `Task`, `WebFetch`, and
+`WebSearch` are Claude Code TOOLS, not shell commands. Pasting the tool
+name into Bash runs whatever (if anything) is on `PATH` by that name --
+not the actual tool.
+
+**Instead:** Invoke the tool directly as a tool call with its real
+parameters (e.g., the Grep tool with `pattern='^## '`,
+`path='docs/CHANGELOG.md'`).
+
+### Pipe-only commands (allowed in pipes, denied as the lead command)
+
+These tools have a "use the dedicated tool instead" deny when run against
+a file path, but remain allowed when consuming piped stdin:
+
+| Command | Denied (lead) | Allowed (in pipe) |
+| --- | --- | --- |
+| `cat`, `head`, `tail` | `cat /tmp/x.txt` | `... \| head -5` |
+| `grep`, `egrep`, `fgrep`, `rg` | `grep pat /tmp/x.txt` | `... \| grep pat` |
+| `sed -n` | `sed -n '10,20p' /tmp/x.txt` | `... \| sed -n '10,20p'` |
+
+The decomposer splits Bash commands on `|`/`&&`/`;` and evaluates each
+leaf independently. A pipeline leaf with no file path argument matches
+the "safe utility" allow list; the same command with a file argument
+hits a deny that steers to the Read or Grep tool.
+
+### `tsc` via `node_modules` paths
+
+**Blocked:** `./node_modules/.bin/tsc`, `./node_modules/typescript/bin/tsc`,
+`/abs/path/node_modules/typescript/bin/tsc`,
+`node node_modules/typescript/bin/tsc`
+
+**Why:** Project-local `tsc` paths are a workaround for `npx tsc` failing.
+Retrying different invocation forms wastes turns and masks missing installs.
+
+**Instead:** Use `npx tsc` (whitelisted). If `npx tsc` fails because TypeScript
+is not installed, run exactly one of these two commands (both are whitelisted):
+
+```bash
+npm install --save-dev typescript   # allowed
+npm install -g typescript           # allowed
+```
+
+Any other `npm install` variation (different flags, version pins, extra
+packages, bare `npm install`) still passes through for user approval.
+
+Do not work around the failure with absolute paths, `node node_modules/...`,
+or `source source_me.sh &&` chains.
+
+### `ffprobe` (steered to `mediainfo`)
+
+**Blocked:** `ffprobe file.m4b`, `ffprobe -show_streams file.mp3`,
+`ffprobe -i file.wav`
+
+**Why:** `mediainfo` produces cleaner JSON for container, codec, and track
+metadata and is the preferred tool.
+
+**Instead:** Use `mediainfo --Output=JSON <file>`. `ffprobe` is allowed
+only with the flags `mediainfo` cannot replicate:
+
+```bash
+ffprobe -show_chapters file.m4b   # allowed (chapter atoms)
+ffprobe -show_packets file.m4b    # allowed (per-packet timing)
+ffprobe -show_frames  file.mp4    # allowed (per-frame timing)
+ffprobe -f lavfi -i sine=440      # allowed (synthetic/lavfi probe)
+```
 
 ### `perl` on `.pg`/`.pgml` files
 
@@ -334,11 +485,14 @@ Running script files (`bash script.sh`, `bash -n script.sh`) is still allowed.
 
 ### `git reset --hard`
 
-**Blocked:** `git reset --hard`, `git reset -hard HEAD~1`
+**Blocked on protected branches:** Destructive history rewrite. Denied on protected
+branches (`main`, `master`); allowed on agent/feature branches for local work.
 
-**Why:** Destructive history rewrite. Use safer alternatives.
+**Instead on protected:** Use safer alternatives like `git checkout -- file` or
+`git restore file` to discard working changes.
 
-**Instead:** `git checkout -- file` or `git restore file` to discard working changes.
+**On agent branches:** `git reset --hard` is allowed for local cleanup and rebasing
+your own work.
 
 ### `git push --force` (including --force-with-lease)
 
@@ -433,6 +587,25 @@ useless.
 **Instead:** Write a `_temp.py` file and run it with
 `source source_me.sh && python3 _temp.py`.
 
+## Worktrees and protected branches
+
+Agents work on `agent/<task>` branches (often inside a worktree) and prepare
+merges into protected branches (`main`, `master` by default) using:
+
+```bash
+git merge --no-commit --no-ff agent/<task>
+```
+
+This stages the merge result without creating the commit. The human reviews
+with `git diff HEAD` and runs the final `git commit` and `git push` themselves.
+Direct `git commit`, `git rebase`, `git reset --hard`, `git cherry-pick`,
+`git revert`, and pushes targeting protected refs are denied while on a
+protected branch; the same commands are allowed on a feature/agent branch.
+
+For shipped copies of this guide, treat this section as the complete worktree
+summary: agents prepare changes, humans create final commits and pushes, and
+protected-branch history-changing commands stay denied.
+
 ## Passthrough (requires user approval)
 
 These commands intentionally require user approval (passthrough) because they have
@@ -479,6 +652,7 @@ interactive UI dialogs, causing blank answers or skipped consent screens.
 | Run Python | `python3 script.py` | `source source_me.sh && python3 script.py` |
 | Read a file | `cat /path/to/file.py` | Read tool: `file_path="/path/to/file.py"` |
 | Search files | `grep -r "pattern" src/` | Grep tool: `pattern="pattern"`, `path="src/"` |
+| Tool name as Bash | `Grep -n "^## " docs/CHANGELOG.md` | Invoke the Grep tool directly (not via Bash) |
 | Find files | `find . -name "*.py"` | Glob tool: `pattern="**/*.py"` |
 | Read lines 10-20 | `sed -n '10,20p' file.txt` | Read tool: `offset=10`, `limit=11` |
 | Delete temp file | `rm temp.py` | Name it `_temp.py`, then `rm _temp.py` |
@@ -488,3 +662,5 @@ interactive UI dialogs, causing blank answers or skipped consent screens.
 | Set env + run | `REPO_ROOT=/x && python3 s.py` | `REPO_ROOT=/x python3 s.py` (one line) |
 | Run heredoc | `python3 - <<EOF ...` | Write `_temp.py`, run with source_me.sh |
 | GitHub CLI | `gh pr list` | Not available (`gh` not installed) |
+| Probe media | `ffprobe -show_streams f.m4b` | `mediainfo --Output=JSON f.m4b` (ffprobe only for chapters/packets/frames/lavfi) |
+| Encode audio | `ffmpeg -i in.wav out.m4a` | Stage to `/tmp`: `ffmpeg -i /tmp/in.wav /tmp/out.m4a` |
