@@ -1,11 +1,8 @@
 # battery-control
 
-Battery reserve controller for ComEd real-time pricing with EP Cube and
-WeMo-controlled battery systems. Manages two physically separate batteries
-(EP Cube 20 kWh via cloud API, WeMo-controlled battery via smart plugs),
-setting reserve SoC every 3 minutes based on real-time electricity prices.
-The EP Cube runs in self-consumption mode; the reserve floor controls how
-much battery is available to serve house load.
+Battery reserve controller for ComEd real-time pricing. Sets EP Cube reserve
+SoC and WeMo battery plugs every 3 minutes so stored energy is held during cheap
+hours and used during expensive grid hours.
 
 ## Quick start
 
@@ -28,6 +25,8 @@ source source_me.sh && python3 send_battery_command.py -x -v
 ```
 
 See [config_example.yml](config_example.yml) for all tunable parameters with comments.
+Use `config.yml` for the local runtime config; it is git-ignored and
+may point to private EP Cube credential and token files.
 
 ## Testing
 

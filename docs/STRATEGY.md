@@ -7,7 +7,7 @@ The design goal: fill the battery when solar is available, then spend it during 
 ## EP Cube mode semantics
 
 Mode behavior, charging sources, and reserve semantics are documented in
-[docs/EPCUBE_MODE_BEHAVIOR.md](docs/EPCUBE_MODE_BEHAVIOR.md). Key points for
+[docs/EPCUBE_MODE_BEHAVIOR.md](EPCUBE_MODE_BEHAVIOR.md). Key points for
 strategy decisions:
 
 - Self-consumption: PV-only charging, reserve is a discharge floor

@@ -9,3 +9,7 @@ report_*.txt
 config.yml
 epcube_auth.yml
 output/
+
+# === UNIVERSAL ===
+_temp*.?*
+

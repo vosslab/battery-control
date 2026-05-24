@@ -1,8 +1,29 @@
 # Changelog
 
+## 2026-05-24
+
+### Fixes and Maintenance
+
+- Shortened the `README.md` opening paragraph so the GitHub About-description
+  guard passes its 250-character limit.
+- Fixed local Markdown links in docs so links from files under `docs/` resolve
+  to tracked files instead of nonexistent `docs/docs/` or `docs/battcontrol/`
+  paths.
+- Kept references to git-ignored `config.yml` as inline code instead of links,
+  because the file may point to private EP Cube credential and token files.
+
+### Developer Tests and Notes
+
+- Re-ran focused README and Markdown link pytest checks after the docs fixes.
+
 ## 2026-05-05
 
 ### Fixes and Maintenance
+
+- Improved `commit_data.sh` commit messages for hourly history updates. The
+  script now counts added lines relative to `HEAD`, includes the latest
+  `hour_start` value in the commit subject, skips cleanly when there is no data
+  change, and only pushes after a successful data commit.
 
 - Fixed recurring CR (`^M`) line-ending pollution in
   `data/hourly_history.csv`. `battcontrol/hourly_logger.py:_write_csv_row`
@@ -153,13 +174,13 @@
 - Added `delivery_rate_cents` config key (default 6.354): variable delivery
   rate from ComEd bill, applied symmetrically to import (charge) and export
   (credit). Derived from 8 months of bill analysis; see
-  [docs/COMED_PRICING_SPEC.md](docs/COMED_PRICING_SPEC.md)
+  [docs/COMED_PRICING_SPEC.md](COMED_PRICING_SPEC.md)
 - Added delivery-inclusive cost model to `replay_strategy.py`: tracks both
   supply-only (`replay_supply_cents`) and total (`replay_total_cents`)
   costs per hour. Strategy savings now use total cost (supply + delivery),
   which changes rankings because the 6.354c delivery credit makes export
   profitable even at negative supply prices
-- Added [docs/COMED_PRICING_SPEC.md](docs/COMED_PRICING_SPEC.md): full
+- Added [docs/COMED_PRICING_SPEC.md](COMED_PRICING_SPEC.md): full
   billing structure documentation from 8 monthly bills, covering delivery
   symmetry, supply settlement, net metering adjustments, and three modeling
   levels for replay accuracy
@@ -176,9 +197,9 @@
   `/device/queryDataElectricityV2` endpoints (from epcube HA integration)
 - Added `epcube_device_info.py` standalone script to fetch and display
   device info, live status, and daily energy stats
-- Documented `allowChargingXiaGrid` in [docs/EPCUBE_MODE_BEHAVIOR.md](docs/EPCUBE_MODE_BEHAVIOR.md):
+- Documented `allowChargingXiaGrid` in [docs/EPCUBE_MODE_BEHAVIOR.md](EPCUBE_MODE_BEHAVIOR.md):
   TOU-mode-only grid charging toggle, forbidden by electricity provider
-- Added [docs/EPCUBE_HARDWARE_SPECS.md](docs/EPCUBE_HARDWARE_SPECS.md): EP Cube v1
+- Added [docs/EPCUBE_HARDWARE_SPECS.md](EPCUBE_HARDWARE_SPECS.md): EP Cube v1
   NA720G specs from datasheet, confirmed by invoice (19.9 kWh, 6 modules,
   93.93% CEC efficiency, 7.6 kW charge/discharge)
 - Added `CONFIG_SCHEMA` in `battcontrol/config.py`: one canonical schema for all
@@ -201,7 +222,7 @@
   peak, min). Prints first in compare mode.
 - Added `configs/half_cutoff.yml`, `configs/cutoff_75pct.yml`,
   `configs/cutoff_60pct.yml` for cutoff scale testing
-- Updated [docs/STRATEGY.md](docs/STRATEGY.md) with experimental cutoff scale
+- Updated [docs/STRATEGY.md](STRATEGY.md) with experimental cutoff scale
   section, replay results, cautions, and export constraint analysis
 
 ### Fixes and Maintenance
@@ -379,7 +400,7 @@
 - Added cutoff deadband (default 0.5c) to prevent state chattering near
   the cutoff boundary; previous state is preserved within the deadband
 - Added `last_strategy_state` to control state for deadband persistence
-- Updated [docs/STRATEGY.md](docs/STRATEGY.md) to document price-first
+- Updated [docs/STRATEGY.md](STRATEGY.md) to document price-first
   model, deadband behavior, and simplified flow chart
 - Updated WeMo actuator to use `StrategyState` instead of `Action`:
   discharge plug ON when above cutoff, both plugs OFF when below cutoff
@@ -414,7 +435,7 @@
 - Night logic (D.2) now receives `comed_cutoff_cents` and clamps the interpolated
   price floor to at least `night_floor_pct` so night discharge never goes below
   the configured night floor
-- Updated [docs/STRATEGY.md](docs/STRATEGY.md) to replace all "extreme" language
+- Updated [docs/STRATEGY.md](STRATEGY.md) to replace all "extreme" language
   with cutoff-based language in sections B.2b, B.3a, and D.2
 
 ### Additions and New Features
@@ -428,13 +449,13 @@
 - Added shoulder defaults for all seasonal config values: `hard_reserve_pct` 15%,
   `night_floor_pct` 30%, and new shoulder price floor anchors (midpoint between
   summer and winter)
-- Updated [docs/STRATEGY.md](docs/STRATEGY.md) to document three-season model
+- Updated [docs/STRATEGY.md](STRATEGY.md) to document three-season model
 - Set `afternoon_target_soc_pct` to 100% for all seasons; charge to full whenever
   solar is available, seasonal differences are in discharge floors and reserves
 - Added negative price headroom logic in daylight B.2b: when SoC >= 95% and price
   is negative, discharge to 85% to absorb solar instead of exporting at a loss;
   initial implementation, likely needs refinement with real negative price data
-- Updated [docs/EPCUBE_API_FIELDS.md](docs/EPCUBE_API_FIELDS.md) from fresh
+- Updated [docs/EPCUBE_API_FIELDS.md](EPCUBE_API_FIELDS.md) from fresh
   `--dump-raw` output at 10:00 AM: added 6 missing raw fields (`evPower`,
   `generatorPower`, `evLight`, `generatorLight`, `fromType`, `isNewDevice`),
   added normalized keys to energy fields table (now 15 normalized fields
@@ -453,7 +474,7 @@
   surplus always charged the battery regardless of price
 - Added `comed_cutoff` column to hourly CSV for replay strategy testing
 - Added cutoff to strategy log line for replay tracing
-- Created [docs/EPCUBE_MODE_BEHAVIOR.md](docs/EPCUBE_MODE_BEHAVIOR.md) documenting
+- Created [docs/EPCUBE_MODE_BEHAVIOR.md](EPCUBE_MODE_BEHAVIOR.md) documenting
   hardware behavior of each EP Cube mode (self-consumption, backup, TOU) with
   details from the EP Cube 2.0 User Manual: charging source priorities, TOU
   sub-mode behavior (off-peak grid charging to 100%, super peak discharge to 5%),

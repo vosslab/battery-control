@@ -2,7 +2,7 @@
 
 Observed and documented behavior of EP Cube operating modes relevant to battery
 control strategy. This documents what each mode actually does on the hardware,
-not what the strategy intends. See [docs/STRATEGY.md](docs/STRATEGY.md) for
+not what the strategy intends. See [docs/STRATEGY.md](STRATEGY.md) for
 decision logic.
 
 Source: EP Cube 2.0 User Manual (Canadian Solar / EternalPlanet) and live
@@ -110,7 +110,7 @@ Per the user manual, if EP Cube will be unused for more than 30 days:
 
 ## API fields reference
 
-See [docs/EPCUBE_API_FIELDS.md](docs/EPCUBE_API_FIELDS.md) for full field
+See [docs/EPCUBE_API_FIELDS.md](EPCUBE_API_FIELDS.md) for full field
 documentation.
 
 Mode-specific payload fields for `/device/switchMode`:
