@@ -1363,3 +1363,17 @@ hour_start,season,comed_price,comed_price_median,comed_cutoff,start_soc,end_soc,
 2026-05-28 15:00,summer,4.5,5.6,6.7,100,100,3.590,4.800,1.240,0.000,0.000,below_cutoff,self_consumption,100,30,False
 2026-05-28 16:00,summer,2.8,5.1,6.1,100,100,4.700,3.740,3.630,0.000,0.000,below_cutoff,self_consumption,100,29,False
 2026-05-28 17:00,summer,4.9,4.7,5.8,100,100,-4.000,2.630,1.930,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-05-28 18:00,summer,6.4,4.7,5.7,100,97,0.070,0.940,1.210,0.000,0.600,above_cutoff,self_consumption,55,30,False
+2026-05-28 19:00,summer,7.4,4.7,5.7,97,94,0.000,0.240,0.870,0.000,0.600,above_cutoff,self_consumption,55,29,False
+2026-05-28 20:00,summer,5.4,4.5,5.7,94,80,0.010,0.010,2.790,0.000,2.800,above_cutoff,self_consumption,55,30,False
+2026-05-28 21:00,summer,3.3,4.4,5.7,79,79,2.880,0.000,2.890,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-05-28 22:00,summer,2.6,4.2,5.5,79,79,0.810,0.000,0.720,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-05-28 23:00,summer,2.7,4.2,6.3,79,79,1.240,0.000,1.150,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-05-29 00:00,summer,2.2,4.1,6.3,79,79,2.040,0.000,1.950,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-05-29 01:00,summer,2.0,4.1,6.3,79,79,2.080,0.000,1.990,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-05-29 02:00,summer,1.9,4.1,6.3,79,79,1.440,0.000,1.370,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-05-29 03:00,summer,1.9,4.1,6.3,79,79,1.500,0.000,1.410,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-05-29 04:00,summer,1.7,3.7,6.0,79,79,1.540,0.000,1.440,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-05-29 05:00,summer,2.2,3.7,6.0,79,79,1.440,0.050,1.410,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-05-29 06:00,summer,2.4,3.7,5.2,79,79,1.360,0.330,1.610,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-05-29 07:00,summer,1.7,3.7,5.2,79,79,1.110,0.950,1.900,0.000,0.000,below_cutoff,self_consumption,100,29,False
