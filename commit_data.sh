@@ -22,5 +22,7 @@ fi
 commit_message="Add $added_lines hourly data $row_label through $latest_hour"
 
 git commit "$DATA_FILE" -m "$commit_message"
+echo "git pushing..."
 sleep 0.1
 git push --quiet
+echo "done"
