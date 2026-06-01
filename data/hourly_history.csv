@@ -1431,3 +1431,8 @@ hour_start,season,comed_price,comed_price_median,comed_cutoff,start_soc,end_soc,
 2026-05-31 11:00,summer,1.6,1.6,5.7,100,100,2.470,4.550,2.090,0.000,0.000,below_cutoff,self_consumption,85,30,False
 2026-05-31 12:00,summer,1.7,1.6,5.9,100,100,2.960,5.280,2.360,0.000,0.000,below_cutoff,self_consumption,85,29,False
 2026-05-31 13:00,summer,1.9,1.6,5.7,100,100,3.090,4.540,2.990,0.000,0.000,below_cutoff,self_consumption,85,30,False
+2026-05-31 14:00,summer,2.6,1.6,5.2,100,100,2.260,3.830,1.570,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-05-31 15:00,summer,2.6,1.7,4.9,100,100,0.910,3.240,2.350,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-05-31 16:00,summer,4.2,1.7,4.6,100,100,-1.480,2.600,2.800,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-05-31 17:00,summer,8.6,1.8,4.6,100,100,0.390,2.490,2.600,0.000,0.000,above_cutoff,self_consumption,49,30,False
+2026-05-31 18:00,summer,5.8,1.8,4.6,100,98,-1.390,0.800,0.960,0.000,0.400,above_cutoff,self_consumption,55,29,False
