@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-06-10
+
+### Behavior or Interface Changes
+
+- `battcontrol/battery_controller.py` `_fetch_comed_price()` now treats a
+  stale ComEd feed as unavailable. It fetches the price payload once via
+  `downloadComedJsonData()` (respecting the shared cross-repo cache) and
+  returns `(None, None, None)` when `comedlib.isPriceDataFresh(data)` is
+  False (newest price sample older than the 20-minute stale window) OR when
+  `getPredictedRate(data)`/`getCurrentComedRate(data)` returns None. Both
+  cases route into the controller's existing "ComEd price unavailable,
+  holding current state" hold path (`battery_controller.py:478-482`).
+
+### Fixes and Maintenance
+
+- Guarding None prevents a daemon crash: the info log line formats predicted
+  and current rates with `%.2f`, which raised `TypeError` on None, and
+  `TypeError` was not in the caught `(RuntimeError, ValueError,
+  requests.RequestException)` tuple. The current rate is now computed once
+  and reused in the log instead of calling `getCurrentComedRate()` a second
+  time. This builds on the prior vendored sync of `battcontrol/comedlib.py`
+  from `energylib/comedlib.py` (commit 54c3449) that added
+  `isPriceDataFresh`/`STALE_PRICE_SECONDS`.
+
+### Developer Tests and Notes
+
+- Added `tests/test_comed_freshness.py` (6 tests, deterministic with
+  injected `now_seconds`): `isPriceDataFresh` returns True for a recent
+  sample and False for an old/empty/timestamp-missing sample;
+  `_fetch_comed_price()` returns `(None, None, None)` for stale data and
+  when `getPredictedRate` returns None (regression for the `%.2f`
+  TypeError). Verified `python3 -m pytest tests/test_comed_freshness.py`
+  -> 6 passed in ~0.7 s.
+
 ## 2026-05-24
 
 ### Fixes and Maintenance

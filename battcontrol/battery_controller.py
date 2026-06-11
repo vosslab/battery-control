@@ -128,14 +128,26 @@ def _fetch_comed_price() -> tuple:
 	try:
 		import battcontrol.comedlib
 		comlib = battcontrol.comedlib.ComedLib()
+		# fetch payload once; all rate functions accept the same data object
+		# to avoid redundant downloads and a fresh/stale race
+		data = comlib.downloadComedJsonData()
+		# guard: stale feed means price data is too old to trust
+		if not comlib.isPriceDataFresh(data):
+			logger.warning("ComEd price data is stale or missing; holding battery")
+			return None, None, None
 		# getPredictedRate() is a worst-case estimator, not the instantaneous rate
 		# (see docs/STRATEGY.md "Price input: worst-case predictor")
-		predicted_price = comlib.getPredictedRate()
-		median_price, _ = comlib.getMedianComedRate()
+		predicted_price = comlib.getPredictedRate(data)
+		median_price, _ = comlib.getMedianComedRate(data)
 		cutoff_price = comlib.getReasonableCutOff()
+		# guard: None from either rate function means parsing failed
+		current = comlib.getCurrentComedRate(data)
+		if predicted_price is None or current is None:
+			logger.warning("ComEd rate returned None (parse failure); holding battery")
+			return None, None, None
 		logger.info(
 			"ComEd price: predicted %.2fc, current %.2fc, median %.2fc, cutoff %.2fc",
-			predicted_price, comlib.getCurrentComedRate(), median_price, cutoff_price,
+			predicted_price, current, median_price, cutoff_price,
 		)
 		return predicted_price, median_price, cutoff_price
 	except (RuntimeError, ValueError, requests.RequestException) as err:
