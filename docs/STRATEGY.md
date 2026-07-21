@@ -156,20 +156,16 @@ Goal: allow battery to serve load, reduce grid purchases.
 
 #### Time-period reserve adjustment
 
-After interpolating the base price floor, a small configurable bias is applied based on time of day. This is explicit and symmetric -- it does not depend on solar availability.
+After interpolating the base price floor, shoulder and winter apply a small
+configurable bias based on time of day. Summer uses its price floor directly,
+because stored solar energy is intended for the evening load.
 
-- **Evening** (13:00-23:00 inclusive): base floor + `time_adjust_soc_pct` (default +5%). Preserve more battery for later expensive load.
-- **Morning** (02:00-10:00 inclusive): base floor - `time_adjust_soc_pct` (default -5%). Allow more battery use because solar is likely coming.
-- **Neutral** (00:00-01:00, 11:00-12:00): base floor only, no adjustment.
+- **Shoulder/winter evening** (13:00-23:00 inclusive): base floor + `time_adjust_soc_pct` (default +5%). Preserve more battery for later expensive load.
+- **Shoulder/winter morning** (02:00-10:00 inclusive): base floor - `time_adjust_soc_pct` (default -5%). Allow more battery use because solar is likely coming.
+- **Summer and neutral hours**: base floor only, no adjustment.
 
-The adjustment applies only above cutoff. Below cutoff is always reserve 100%, no time adjustment.
-
-Summer has one high-price exception. Its final price anchor is 100c at the
-10% hard reserve, and prices above the last anchor clamp to that same floor.
-When the summer floor reaches the hard reserve, the controller bypasses the
-generic evening or morning adjustment. This prevents the generic evening bias
-from reserving more than the outage minimum during an extreme price spike.
-Shoulder and winter keep the normal time-period adjustment.
+The adjustment applies only above cutoff. Below cutoff is always reserve 100%,
+no time adjustment.
 
 All values (`time_adjust_soc_pct`, start/end hours) are configurable. Final floor is clamped to 0-100%.
 
@@ -207,8 +203,8 @@ Winter anchors (more conservative):
 
 Example: summer price 9c is midway between 8c and 10c, so floor = 30%.
 Between 10c and 100c the floor declines linearly from 20% to 10%; above 100c
-it clamps to 10%. The normal time-period adjustment applies until the floor
-reaches that 10% hard reserve.
+it clamps to 10%. These are the effective summer reserves, with no time-period
+adjustment.
 
 ### E. Command buffering
 
@@ -314,4 +310,4 @@ as solar penetration increases.
 
 ## Summary
 
-The controller uses two strategy states (`BELOW_CUTOFF`, `ABOVE_CUTOFF`) driven by predicted price vs cutoff. Both states use self-consumption mode; only the reserve SoC changes. Below cutoff: reserve 100%, battery is preserved, load supplied by grid when solar is insufficient. Above cutoff: reserve follows the price map adjusted by time period, battery can serve load down to that reserve. The inverter handles actual power flow based on house load and solar availability. Three seasons (summer, shoulder, winter) drive discharge floor behavior. Price-threshold effects come through three layers: the comedlib cutoff (time-of-day heuristics), the SoC-based cutoff adjustment (battery charge level), and the cutoff deadband (state persistence). Reserve-floor effects come through the time-period adjustment (evening +5%, morning -5% on the interpolated floor).
+The controller uses two strategy states (`BELOW_CUTOFF`, `ABOVE_CUTOFF`) driven by predicted price vs cutoff. Both states use self-consumption mode; only the reserve SoC changes. Below cutoff: reserve 100%, battery is preserved, load supplied by grid when solar is insufficient. Above cutoff: reserve follows the price map, and the battery can serve load down to that reserve. The inverter handles actual power flow based on house load and solar availability. Three seasons (summer, shoulder, winter) drive discharge floor behavior. Price-threshold effects come through three layers: the comedlib cutoff (time-of-day heuristics), the SoC-based cutoff adjustment (battery charge level), and the cutoff deadband (state persistence). Shoulder and winter add a time-period adjustment (evening +5%, morning -5%) to the interpolated reserve floor; summer does not.

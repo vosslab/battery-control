@@ -64,7 +64,7 @@ CONFIG_SCHEMA = {
 	"reserve_soc_buffer_pct": {"type": int, "default": 2, "min": 0, "max": 50},
 	# command buffer: optional periodic resend (0 = disabled)
 	"epcube_resend_interval_minutes": {"type": int, "default": 0, "min": 0},
-	# time-period reserve adjustment on top of price floor (above cutoff only)
+	# shoulder/winter time-period reserve adjustment (above cutoff only)
 	"time_adjust_soc_pct": {"type": int, "default": 5, "min": 0, "max": 100},
 	"evening_adjust_start_hour": {"type": int, "default": 13, "min": 0, "max": 23},
 	"evening_adjust_end_hour": {"type": int, "default": 23, "min": 0, "max": 23},
