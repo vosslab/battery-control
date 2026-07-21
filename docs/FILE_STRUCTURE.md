@@ -70,7 +70,7 @@ Pytest test suite. All files follow the `test_*.py` naming convention.
 | test_bandit_security.py | Security lint |
 
 Utility scripts in tests:
-- [git_file_utils.py](../tests/git_file_utils.py): shared `get_repo_root()` helper
+- [file_utils.py](../tests/file_utils.py): shared `get_repo_root()` helper
 - [conftest.py](../tests/conftest.py): pytest fixtures
 - [check_ascii_compliance.py](../tests/check_ascii_compliance.py): single-file ASCII checker
 - [fix_ascii_compliance.py](../tests/fix_ascii_compliance.py): single-file ASCII fixer

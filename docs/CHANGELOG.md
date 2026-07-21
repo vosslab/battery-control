@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-20
+
+### Behavior or Interface Changes
+
+- Summer price floors are now 40% at 8c/kWh, 20% at 10c/kWh, and linearly
+  decline to the 10% outage reserve at 100c/kWh. The generic evening bias is
+  bypassed only once that hard reserve is reached. Shoulder and winter policies
+  are unchanged.
+
 ## 2026-06-10
 
 ### Behavior or Interface Changes

@@ -4,9 +4,9 @@
 from unittest import mock
 
 # local repo modules
-import git_file_utils
+import file_utils
 
-REPO_ROOT = git_file_utils.get_repo_root()
+REPO_ROOT = file_utils.get_repo_root()
 
 import sys
 sys.path.insert(0, REPO_ROOT)

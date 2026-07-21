@@ -164,6 +164,13 @@ After interpolating the base price floor, a small configurable bias is applied b
 
 The adjustment applies only above cutoff. Below cutoff is always reserve 100%, no time adjustment.
 
+Summer has one high-price exception. Its final price anchor is 100c at the
+10% hard reserve, and prices above the last anchor clamp to that same floor.
+When the summer floor reaches the hard reserve, the controller bypasses the
+generic evening or morning adjustment. This prevents the generic evening bias
+from reserving more than the outage minimum during an extreme price spike.
+Shoulder and winter keep the normal time-period adjustment.
+
 All values (`time_adjust_soc_pct`, start/end hours) are configurable. Final floor is clamped to 0-100%.
 
 ### Price-floor interpolation
@@ -176,10 +183,9 @@ Summer anchors:
 
 | Price (cents) | SoC floor |
 | --- | --- |
-| 8 | 50% |
-| 10 | 30% |
-| 20 | 20% |
-| 30 | 10% |
+| 8 | 40% |
+| 10 | 20% |
+| 100 | 10% |
 
 Shoulder anchors (between summer and winter):
 
@@ -199,7 +205,10 @@ Winter anchors (more conservative):
 | 20 | 30% |
 | 30 | 20% |
 
-Example: summer price 9c is midway between 8c and 10c, so floor = 40%.
+Example: summer price 9c is midway between 8c and 10c, so floor = 30%.
+Between 10c and 100c the floor declines linearly from 20% to 10%; above 100c
+it clamps to 10%. The normal time-period adjustment applies until the floor
+reaches that 10% hard reserve.
 
 ### E. Command buffering
 

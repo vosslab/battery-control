@@ -8,9 +8,9 @@ import datetime
 import pytest
 
 # local repo modules
-import git_file_utils
+import file_utils
 
-REPO_ROOT = git_file_utils.get_repo_root()
+REPO_ROOT = file_utils.get_repo_root()
 sys.path.insert(0, REPO_ROOT)
 
 import battcontrol.command_buffer as command_buffer_mod

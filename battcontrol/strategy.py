@@ -276,7 +276,13 @@ def evaluate(
 		# allow more battery use now because solar is likely coming
 		adjust = -time_adjust
 		period_label = f", morning -{time_adjust}%"
-	final_floor = max(0, min(100, base_price_floor + adjust))
+	# The final summer price anchor is the hard reserve. At that extreme price,
+	# do not add the generic evening holdback above the outage reserve.
+	if season == "summer" and base_price_floor <= hard_reserve:
+		final_floor = hard_reserve
+		period_label = f", summer high-price floor {final_floor}%"
+	else:
+		final_floor = max(0, min(100, base_price_floor + adjust))
 	reason = (f"Above cutoff: price {comed_price_cents:.1f}c >= "
 		f"cutoff {comed_cutoff_cents:.1f}c, base floor {base_price_floor}%"
 		f"{period_label}, reserve {final_floor}%")

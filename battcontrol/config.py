@@ -33,10 +33,9 @@ CONFIG_SCHEMA = {
 		"type": dict,
 		"default": {
 			"summer": [
-				{"price_cents": 8, "soc_floor_pct": 50},
-				{"price_cents": 10, "soc_floor_pct": 30},
-				{"price_cents": 20, "soc_floor_pct": 20},
-				{"price_cents": 30, "soc_floor_pct": 10},
+				{"price_cents": 8, "soc_floor_pct": 40},
+				{"price_cents": 10, "soc_floor_pct": 20},
+				{"price_cents": 100, "soc_floor_pct": 10},
 			],
 			"shoulder": [
 				{"price_cents": 8, "soc_floor_pct": 55},
