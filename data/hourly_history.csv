@@ -2634,3 +2634,9 @@ hour_start,season,comed_price,comed_price_median,comed_cutoff,start_soc,end_soc,
 2026-07-20 16:00,summer,21.3,4.7,5.8,100,100,2.190,3.520,1.260,0.000,0.000,above_cutoff,self_consumption,24,29,False
 2026-07-20 17:00,summer,24.7,4.8,5.9,100,98,1.080,1.240,1.290,0.000,0.400,above_cutoff,self_consumption,20,30,False
 2026-07-20 18:00,summer,13.0,4.8,5.9,98,89,0.040,0.130,1.940,0.000,1.800,above_cutoff,self_consumption,32,29,False
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
+2026-07-20 19:00,summer,20.9,4.8,6.0,82,82,0.000,0.220,4.040,0.000,0.000,STARTUP,self_consumption,24,0,False
+2026-07-20 19:00,summer,12.0,4.8,6.0,80,80,0.000,0.230,4.070,0.000,0.000,STARTUP,self_consumption,20,0,False
+>>>>>>> Stashed changes
