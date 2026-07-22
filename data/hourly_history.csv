@@ -2652,3 +2652,17 @@ hour_start,season,comed_price,comed_price_median,comed_cutoff,start_soc,end_soc,
 2026-07-21 04:00,summer,4.5,6.2,8.6,55,55,0.890,0.000,0.800,0.000,0.000,below_cutoff,self_consumption,100,30,False
 2026-07-21 05:00,summer,15.1,6.2,8.7,55,52,0.310,0.000,0.870,0.000,0.600,above_cutoff,self_consumption,19,29,False
 2026-07-21 06:00,summer,6.6,6.3,8.0,51,50,0.350,0.190,0.790,0.000,0.200,below_cutoff,self_consumption,100,29,False
+2026-07-21 07:00,summer,7.0,6.4,8.1,50,50,0.040,0.730,0.620,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-07-21 08:00,summer,5.4,6.4,8.0,50,56,0.010,2.170,0.770,1.200,0.000,below_cutoff,self_consumption,100,29,False
+2026-07-21 09:00,summer,26.6,6.8,8.2,56,66,0.010,3.350,0.820,2.000,0.000,above_cutoff,self_consumption,18,29,False
+2026-07-21 10:00,summer,8.6,6.9,8.5,66,72,0.090,3.900,2.530,1.200,0.000,above_cutoff,self_consumption,34,29,False
+2026-07-21 11:00,summer,20.5,7.0,8.7,73,84,0.160,4.370,1.710,2.200,0.000,above_cutoff,self_consumption,19,29,False
+2026-07-21 12:00,summer,11.0,7.5,9.2,85,89,0.130,4.200,3.070,0.800,0.000,above_cutoff,self_consumption,20,29,False
+2026-07-21 13:00,summer,6.2,7.5,9.0,89,94,-9.050,4.170,2.910,1.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-07-21 14:00,summer,8.5,7.6,8.6,94,100,1.570,4.450,2.220,1.200,0.000,above_cutoff,self_consumption,35,29,False
+2026-07-21 15:00,summer,4.1,7.6,8.1,100,100,8.270,3.420,2.590,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-07-21 16:00,summer,10.6,7.0,7.5,100,98,7.480,2.370,2.460,0.000,0.400,above_cutoff,self_consumption,20,30,False
+2026-07-21 17:00,summer,7.7,6.6,7.1,98,95,6.740,2.610,2.400,0.000,0.600,above_cutoff,self_consumption,40,28,False
+2026-07-21 18:00,summer,8.8,6.4,6.9,94,89,0.020,1.070,2.110,0.000,1.000,above_cutoff,self_consumption,32,29,False
+2026-07-21 19:00,summer,8.1,6.3,7.1,89,79,0.040,0.210,2.280,0.000,2.000,above_cutoff,self_consumption,39,28,False
+2026-07-21 20:00,summer,5.4,6.2,7.0,79,78,2.840,0.000,2.910,0.000,0.200,below_cutoff,self_consumption,100,30,False
