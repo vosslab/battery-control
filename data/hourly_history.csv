@@ -3657,3 +3657,17 @@ hour_start,season,comed_price,comed_price_median,comed_cutoff,start_soc,end_soc,
 2026-09-01 19:00,summer,45.3,13.9,12.0,61,46,0.040,0.010,2.860,0.000,3.000,above_cutoff,self_consumption,16,29,False
 2026-09-01 20:00,summer,6.1,13.9,12.0,46,43,3.240,0.000,3.660,0.000,0.600,below_cutoff,self_consumption,100,30,False
 2026-09-01 21:00,summer,5.4,13.9,12.0,43,43,4.030,0.000,3.940,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-09-01 22:00,summer,4.6,13.9,12.0,43,43,4.430,0.000,4.340,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-09-01 23:00,summer,3.9,13.9,12.0,43,43,4.450,0.000,4.360,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-09-02 00:00,summer,3.9,13.9,12.0,43,43,5.029,0.000,4.941,0.000,0.000,below_cutoff,self_consumption,100,30,True
+2026-09-02 01:00,summer,3.1,13.9,12.0,43,43,3.280,0.000,3.200,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-09-02 02:00,summer,2.6,13.9,12.0,43,43,4.270,0.000,4.190,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-09-02 03:00,summer,2.6,13.9,12.0,43,43,2.810,0.000,2.710,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-09-02 04:00,summer,3.1,13.9,12.0,43,43,1.560,0.000,1.480,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-09-02 05:00,summer,17.0,15.1,12.0,43,40,1.540,0.000,2.140,0.000,0.600,above_cutoff,self_consumption,19,30,False
+2026-09-02 06:00,summer,3.9,15.1,12.0,40,40,3.080,0.050,3.130,0.000,0.000,below_cutoff,self_consumption,100,29,False
+2026-09-02 07:00,summer,3.4,15.1,12.0,40,40,3.070,0.650,3.630,0.000,0.000,below_cutoff,self_consumption,100,30,False
+2026-09-02 08:00,summer,5.6,15.1,12.0,40,42,0.540,1.780,1.920,0.400,0.000,below_cutoff,self_consumption,100,29,False
+2026-09-02 09:00,summer,15.3,16.4,12.0,42,46,0.360,2.290,1.500,0.800,0.000,above_cutoff,self_consumption,19,29,False
+2026-09-02 10:00,summer,6.9,16.4,12.0,46,50,0.420,3.600,3.090,0.800,0.000,below_cutoff,self_consumption,100,30,False
+2026-09-02 11:00,summer,23.2,17.4,12.0,50,60,0.010,4.110,1.570,2.000,0.000,above_cutoff,self_consumption,19,29,False
