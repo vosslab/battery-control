@@ -2,6 +2,7 @@
 """Run the battery controller in a loop for live terminal monitoring."""
 
 # Standard Library
+import os
 import sys
 import time
 import datetime
@@ -13,12 +14,16 @@ def parse_daemon_args() -> tuple:
 	Parse daemon-specific args, pass the rest through to the controller.
 
 	Returns:
-		tuple: (delay_minutes, remaining_argv)
+		tuple: (delay_minutes, remaining_argv, check_config_only)
 	"""
 	parser = argparse.ArgumentParser(add_help=False)
 	parser.add_argument(
 		'-d', '--delay', dest='delay_minutes', type=int, default=2,
 		help="Delay between runs in minutes (default: 2)",
+	)
+	parser.add_argument(
+		'--check-config', dest='check_config_only', action='store_true',
+		help="Check configuration and required EP Cube auth file, then exit",
 	)
 	daemon_args, remaining = parser.parse_known_args()
 	delay_minutes = daemon_args.delay_minutes
@@ -31,7 +36,7 @@ def parse_daemon_args() -> tuple:
 	has_intent = any(arg in dry_flags or arg in execute_flags for arg in remaining)
 	if not has_intent:
 		remaining.append('--execute')
-	return delay_minutes, remaining
+	return delay_minutes, remaining, daemon_args.check_config_only
 
 #============================================
 def run_one_cycle(cycle_num: int) -> None:
@@ -51,9 +56,24 @@ def run_one_cycle(cycle_num: int) -> None:
 #============================================
 def main() -> None:
 	"""Run the battery controller in a repeating loop."""
-	delay_minutes, remaining_argv = parse_daemon_args()
+	delay_minutes, remaining_argv, check_config_only = parse_daemon_args()
 	# patch sys.argv so the controller's parse_args sees only its flags
 	sys.argv = [sys.argv[0]] + remaining_argv
+	if check_config_only:
+		import battcontrol.config
+		import battcontrol.battery_controller
+		args = battcontrol.battery_controller.parse_args()
+		config = battcontrol.config.load_config(args.config_file)
+		auth_path = os.path.expanduser(config["epcube_auth_file"])
+		# ASVS 16.5.3: fail before starting the daemon when credentials are missing.
+		if not os.path.isfile(auth_path):
+			print(f"ERROR: EP Cube auth file not found: {auth_path!r}", file=sys.stderr)
+			print(
+				"Run epcube_setup.py and set epcube_auth_file in your config.",
+				file=sys.stderr,
+			)
+			raise SystemExit(1)
+		return
 	delay_seconds = delay_minutes * 60
 	print(f"Battery controller daemon starting (delay={delay_minutes}m)")
 	print(f"  Controller args: {remaining_argv}")

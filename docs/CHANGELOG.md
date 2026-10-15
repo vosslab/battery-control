@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-15
+
+### Fixes and Maintenance
+
+- `run_daemon_tmux.sh` now checks the selected configuration and requires its
+  `epcube_auth_file` before creating a tmux session. A missing auth file reports
+  an error and exits nonzero instead of starting a daemon that repeatedly fails.
+- Added `daemon_loop.py --check-config` for the launcher's startup check, reusing
+  the controller's config argument and loader, including custom paths and `~` expansion.
+- Synchronized shared style guides, tests, and repository support files from the starter template.
+
+### Developer Tests and Notes
+
+- Verified eight isolated launcher cases with a tmux stub, covering missing and
+  present credentials, custom paths and config flags, invalid file paths, and
+  an existing session. Shell syntax and eight focused file hygiene checks pass.
+
 ## 2026-07-20
 
 ### Behavior or Interface Changes

@@ -1,3 +1,5 @@
+# This file is vendored. Local changes can and will be overwritten by propagation.
+
 # Standard Library
 import os
 import re
@@ -22,7 +24,7 @@ PROGRESS_EVERY = 1
 HEADER = "ASCII compliance errors detected:"
 
 ASCII_EXTENSIONS = {
-	".md",
+	".md", ".djot",
 	".txt",
 	".py",
 	".js",

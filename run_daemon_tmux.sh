@@ -35,6 +35,13 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
 	exit 0
 fi
 
+# Validate the selected config and auth file before creating a session.
+(cd "$REPO_ROOT" && source source_me.sh && python3 daemon_loop.py --check-config "$@")
+CHECK_STATUS=$?
+if [ "$CHECK_STATUS" -ne 0 ]; then
+	exit "$CHECK_STATUS"
+fi
+
 echo "Starting tmux session '$SESSION_NAME'..."
 # Forward all script args to daemon_loop.py via "$@". daemon_loop.py
 # defaults to --execute when no intent flag is given.

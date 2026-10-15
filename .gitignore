@@ -1,20 +1,18 @@
-data/daily_summary.csv
-battery_controller.log
-epcube_*.json
-epcube/
-_*.py
-_*.sh
-report_*.txt
+# === UNIVERSAL === [PROPAGATED - LOCAL EDITS OVERWRITTEN]
 .DS_Store
-config.yml
-epcube_auth.yml
-output/
-
-# === UNIVERSAL ===
-output*/
+/node_modules/
+/.env
+/report_*.txt
+/output*/
+/generated/
+/graphify-out/
 _temp*.?*
-OTHER_REPOS/
-# === PYTHON ===
+/temp/
+/tests/_temp/
+/OTHER_REPOS/
+/LOCAL_ONLY/
+
+# === PYTHON === [PROPAGATED - LOCAL EDITS OVERWRITTEN]
 build/
 dist/
 sdist/
@@ -22,3 +20,15 @@ sdist/
 *.egg-info/
 site/
 
+# -------------------- LOCAL REPOSITORY RULES --------------------
+# ADD YOUR CUSTOM IGNORES BELOW
+# Propagation preserves this section.
+data/daily_summary.csv
+battery_controller.log
+epcube_*.json
+epcube/
+_*.py
+_*.sh
+report_*.txt
+config.yml
+epcube_auth.yml

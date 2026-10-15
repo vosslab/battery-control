@@ -1,3 +1,5 @@
+# This file is vendored. Local changes can and will be overwritten by propagation.
+
 """Repo-wide whitespace hygiene: BOM, CRLF, trailing whitespace, missing final newline."""
 
 # Standard Library
@@ -11,7 +13,7 @@ import file_utils
 
 # Text-format extensions that the whitespace hygiene check scans.
 EXTENSIONS = (
-	".md", ".txt", ".py", ".sh", ".bash", ".zsh",
+	".md", ".djot", ".txt", ".py", ".sh", ".bash", ".zsh",
 	".yml", ".yaml", ".json", ".toml", ".ini", ".cfg", ".conf",
 	".csv", ".tsv", ".html", ".htm", ".css",
 )
